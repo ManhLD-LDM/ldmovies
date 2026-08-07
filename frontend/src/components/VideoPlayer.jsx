@@ -12,6 +12,7 @@ import {
     FiSettings
 } from 'react-icons/fi';
 import useWatchHistoryStore from '../stores/watchHistoryStore';
+import useDataSaverStore from '../stores/dataSaverStore';
 
 // ─── ProgressBar Component ──────────────────────────────────────────────────
 // Tách riêng thành component con để tránh re-render toàn bộ VideoPlayer
@@ -143,6 +144,8 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
     const speedMenuRef = useRef(null);
     const qualityMenuRef = useRef(null);
 
+    const dataSaverEnabled = useDataSaverStore((state) => state.enabled);
+
     // History and Resume Prompt states
     const { addToHistory, updateProgress, syncHistoryItemToBackend } = useWatchHistoryStore();
     const [showResumePrompt, setShowResumePrompt] = useState(false);
@@ -260,9 +263,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    // ── HLS.js setup — Fix: trình duyệt không support phát trực tiếp .m3u8 ──
-    // Nếu URL là file .m3u8, dùng hls.js để load. Safari thì dùng native.
-    // Với embed URL, render iframe thay vì <video>.
+    // ── HLS.js setup ───────────────────────────────────────────────────────
     useEffect(() => {
         const video = videoRef.current;
         if (!video || !videoUrl) return;
@@ -291,14 +292,14 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
-                    maxBufferLength: 30, // Max forward buffer 30s
-                    maxMaxBufferLength: 60,
-                    startLevel: isAuto ? -1 : 0, // 0 = level thấp nhất an toàn khi khởi tạo
+                    maxBufferLength: dataSaverEnabled ? 15 : 30, // 15s forward buffer khi bật Data Saver
+                    maxMaxBufferLength: dataSaverEnabled ? 30 : 60,
+                    startLevel: (dataSaverEnabled || !isAuto) ? 0 : -1, // Force start level 0 (thấp nhất) khi bật Data Saver
                     capLevelToPlayerSize: true, // Không bao giờ tải resolution > kích thước player
                     capLevelOnFPSDrop: true,
-                    maxBufferSize: 20 * 1000 * 1000, // Max buffer 20MB
-                    backBufferLength: 30, // Xả buffer cũ đã xem
-                    abrEwmaDefaultEstimate: 800_000, // Khởi tạo ước tính 800 kbps thay vì 5 Mbps
+                    maxBufferSize: dataSaverEnabled ? 10 * 1000 * 1000 : 20 * 1000 * 1000,
+                    backBufferLength: 30,
+                    abrEwmaDefaultEstimate: dataSaverEnabled ? 400_000 : 800_000,
                     startFragPrefetch: false,
                 });
                 hlsRef.current = hls;
@@ -319,10 +320,10 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                     setIsLoading(false);
                     video.play().catch(e => console.log('Auto-play blocked:', e));
 
-                    // Lọc và lưu danh sách chất lượng video (chỉ lấy 1080, 720, 480 nếu có)
+                    // Lọc và lưu danh sách chất lượng video (chỉ lấy 1080, 720, 480, 360 nếu có)
                     if (data.levels && data.levels.length > 0) {
                         let mappedLevels = data.levels.map((l, idx) => ({ ...l, originalIndex: idx }));
-                        const desiredHeights = [1080, 720, 480];
+                        const desiredHeights = [1080, 720, 480, 360];
                         let filteredLevels = mappedLevels.filter(l => 
                             desiredHeights.some(h => Math.abs(h - l.height) <= 50)
                         );
@@ -332,23 +333,41 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                         filteredLevels.sort((a,b) => b.height - a.height);
                         setLevels(filteredLevels);
 
-                        // --- Data Saver: Apply saved quality or limit default resolution ---
-                        if (isAuto) {
-                            hls.currentLevel = -1;
+                        // --- Data Saver Enforcement ---
+                        if (dataSaverEnabled) {
+                            // Ép trần chất lượng tối đa (autoLevelCapping) không cho HLS auto nhảy lên 720p / 1080p
+                            const maxAllowedHeight = 480;
+                            let maxCapIndex = 0;
+                            data.levels.forEach((l, idx) => {
+                                if (l.height <= maxAllowedHeight + 50) {
+                                    maxCapIndex = Math.max(maxCapIndex, idx);
+                                }
+                            });
+
+                            hls.autoLevelCapping = maxCapIndex;
+                            hls.currentLevel = maxCapIndex;
+                            setCurrentLevel(maxCapIndex);
+                            setIsAutoQuality(false);
                         } else {
-                            const isMobileScreen = window.innerWidth <= 768;
-                            const targetHeight = parseInt(savedQuality, 10) || (isMobileScreen ? 480 : 720);
-                            let targetLevel = filteredLevels.find(l => Math.abs(l.height - targetHeight) <= 50);
-                            
-                            if (targetLevel) {
-                                hls.currentLevel = targetLevel.originalIndex;
-                                setCurrentLevel(targetLevel.originalIndex);
-                                setIsAutoQuality(false);
+                            hls.autoLevelCapping = -1;
+                            if (isAuto) {
+                                hls.currentLevel = -1;
+                                setIsAutoQuality(true);
                             } else {
-                                const lowestLevel = filteredLevels[filteredLevels.length - 1];
-                                hls.currentLevel = lowestLevel.originalIndex;
-                                setCurrentLevel(lowestLevel.originalIndex);
-                                setIsAutoQuality(false);
+                                const isMobileScreen = window.innerWidth <= 768;
+                                const targetHeight = parseInt(savedQuality, 10) || (isMobileScreen ? 480 : 720);
+                                let targetLevel = filteredLevels.find(l => Math.abs(l.height - targetHeight) <= 50);
+                                
+                                if (targetLevel) {
+                                    hls.currentLevel = targetLevel.originalIndex;
+                                    setCurrentLevel(targetLevel.originalIndex);
+                                    setIsAutoQuality(false);
+                                } else {
+                                    const lowestLevel = filteredLevels[filteredLevels.length - 1];
+                                    hls.currentLevel = lowestLevel.originalIndex;
+                                    setCurrentLevel(lowestLevel.originalIndex);
+                                    setIsAutoQuality(false);
+                                }
                             }
                         }
                     }
@@ -398,7 +417,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                 hlsRef.current = null;
             }
         };
-    }, [videoUrl, initialTime]);
+    }, [videoUrl, initialTime, dataSaverEnabled]);
 
     // Dừng tải fragment khi tab ẩn / video pause để tiết kiệm data
     useEffect(() => {
