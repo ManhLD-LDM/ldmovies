@@ -27,38 +27,48 @@ export const syncHistoryItem = async (req, res) => {
     }
 
     const newEntry = {
-      ...item,
-      watchedAt: Date.now(),
+      slug: item.slug,
+      type: item.type || 'movie',
+      name: item.name,
+      episodeName: item.episodeName,
       progress: item.progress || 0,
       duration: item.duration || 0,
+      poster: item.poster || '',
+      watchedAt: new Date(),
     };
 
-    // Remove existing entry if it exists to avoid duplicates
-    await User.updateOne(
-      { _id: req.user._id },
-      { $pull: { watchHistory: { slug: item.slug, episodeName: item.episodeName } } }
-    );
-
-    // Push new entry to the top and slice to keep only the latest 20
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
+    // Đơn lẻ 1 lệnh ghi nguyên tử (atomic update pipeline)
+    await User.updateOne({ _id: req.user._id }, [
       {
-        $push: {
+        $set: {
           watchHistory: {
-            $each: [newEntry],
-            $position: 0,
-            $slice: 20,
+            $slice: [
+              {
+                $concatArrays: [
+                  [newEntry],
+                  {
+                    $filter: {
+                      input: { $ifNull: ['$watchHistory', []] },
+                      cond: {
+                        $not: {
+                          $and: [
+                            { $eq: ['$$this.slug', item.slug] },
+                            { $eq: ['$$this.episodeName', item.episodeName] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+              20,
+            ],
           },
         },
       },
-      { new: true, select: 'watchHistory' }
-    );
+    ]);
 
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
-    }
-
-    res.json(user.watchHistory);
+    res.status(204).end();
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -114,36 +124,38 @@ export const syncComicHistoryItem = async (req, res) => {
     }
 
     const newEntry = {
-      ...item,
-      watchedAt: Date.now(),
+      slug: item.slug,
+      name: item.name,
+      chapterName: item.chapterName,
+      chapterId: item.chapterId || '',
+      poster: item.poster || '',
+      watchedAt: new Date(),
     };
 
-    // Remove existing entry if it exists to avoid duplicates
-    await User.updateOne(
-      { _id: req.user._id },
-      { $pull: { comicHistory: { slug: item.slug } } }
-    );
-
-    // Push new entry to the top and slice to keep only the latest 50
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
+    await User.updateOne({ _id: req.user._id }, [
       {
-        $push: {
+        $set: {
           comicHistory: {
-            $each: [newEntry],
-            $position: 0,
-            $slice: 50,
+            $slice: [
+              {
+                $concatArrays: [
+                  [newEntry],
+                  {
+                    $filter: {
+                      input: { $ifNull: ['$comicHistory', []] },
+                      cond: { $not: { $eq: ['$$this.slug', item.slug] } },
+                    },
+                  },
+                ],
+              },
+              50,
+            ],
           },
         },
       },
-      { new: true, select: 'comicHistory' }
-    );
+    ]);
 
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
-    }
-
-    res.json(user.comicHistory);
+    res.status(204).end();
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -37,9 +37,7 @@ const useAuthStore = create((set) => ({
   register: async (data) => {
     set({ isLoading: true, error: null });
     try {
-      console.log('Sending registration data:', data);
       const response = await authApi.register(data);
-      console.log('Registration response:', response.data);
       const { token, _id, username, email, avatar, bio } = response.data;
       
       const user = { _id, username, email, avatar, bio };

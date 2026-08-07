@@ -7,6 +7,11 @@ const myCache = new NodeCache({ stdTTL: 600, checkperiod: 620 });
 const API_BASE_URL = process.env.OTRUYEN_API_URL || 'https://otruyenapi.com/v1/api';
 const CDN_URL = process.env.OTRUYEN_CDN_URL || 'https://img.otruyenapi.com';
 
+const sendCached = (res, data, maxAge = 300) => {
+  res.set('Cache-Control', `public, max-age=${maxAge}, stale-while-revalidate=${maxAge * 2}`);
+  return res.json(data);
+};
+
 export const getLatestComics = async (req, res) => {
   try {
     const page = req.query.page || 1;
@@ -15,7 +20,7 @@ export const getLatestComics = async (req, res) => {
     // Check cache
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
-      return res.json(cachedData);
+      return sendCached(res, cachedData, 300);
     }
 
     const response = await axios.get(`${API_BASE_URL}/danh-sach/truyen-moi?page=${page}`);
@@ -43,7 +48,7 @@ export const getLatestComics = async (req, res) => {
 
         // Save to cache - chi tiết truyện ít thay đổi, cache 1 tiếng
         myCache.set(cacheKey, result, 3600);
-        return res.json(result);
+        return sendCached(res, result, 300);
     }
     
     return res.status(404).json({ message: 'No comics found' });
@@ -61,7 +66,7 @@ export const getComicDetails = async (req, res) => {
     // Check cache
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
-      return res.json(cachedData);
+      return sendCached(res, cachedData, 600);
     }
 
     const response = await axios.get(`${API_BASE_URL}/truyen-tranh/${slug}`);
@@ -89,7 +94,7 @@ export const getComicDetails = async (req, res) => {
 
         // Save to cache
         myCache.set(cacheKey, result);
-        return res.json(result);
+        return sendCached(res, result, 600);
     }
     
     return res.status(404).json({ message: 'Comic not found' });
@@ -107,7 +112,7 @@ export const getComicChapter = async (req, res) => {
     // Check cache
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
-      return res.json(cachedData);
+      return sendCached(res, cachedData, 86400);
     }
 
     // Usually OTruyen chapter data is fetched from sv1.otruyencdn.com
@@ -117,7 +122,7 @@ export const getComicChapter = async (req, res) => {
     if (data && data.status === 'success') {
       // Save to cache
       myCache.set(cacheKey, data);
-      return res.json(data);
+      return sendCached(res, data, 86400);
     }
     
     return res.status(404).json({ message: 'Chapter not found' });
@@ -132,14 +137,14 @@ export const getGenres = async (req, res) => {
     const cacheKey = 'comic_genres';
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
-      return res.json(cachedData);
+      return sendCached(res, cachedData, 86400);
     }
 
     const response = await axios.get('https://otruyenapi.com/v1/api/the-loai');
     const data = response.data;
     if (data && data.status === 'success') {
       myCache.set(cacheKey, data, 86400); // cache genres for 1 day
-      return res.json(data);
+      return sendCached(res, data, 86400);
     }
     
     return res.status(404).json({ message: 'Genres not found' });
@@ -157,14 +162,14 @@ export const getComicsByGenre = async (req, res) => {
     
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
-      return res.json(cachedData);
+      return sendCached(res, cachedData, 600);
     }
 
     const response = await axios.get(`https://otruyenapi.com/v1/api/the-loai/${slug}?page=${page}`);
     const data = response.data;
     if (data && data.status === 'success') {
       myCache.set(cacheKey, data);
-      return res.json(data);
+      return sendCached(res, data, 600);
     }
     
     return res.status(404).json({ message: 'Category not found' });

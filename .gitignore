@@ -6,8 +6,13 @@ node_modules/
 .env.*
 !.env.example
 
-# Cloudflare config
+# Cloudflare config & binaries
 config.yml
+cloudflared.exe
+temp.json
+
+# Cache
+.cache/
 
 # Build output
 dist/

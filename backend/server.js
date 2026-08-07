@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
+import { validateEnv } from './config/env.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -15,9 +16,11 @@ import favoritesRoutes from './routes/favorites.js';
 import historyRoutes from './routes/history.js';
 import userRoutes from './routes/user.js';
 import comicRoutes from './routes/comicRoutes.js';
+import imageRoutes from './routes/imageRoutes.js';
 
-// Load env vars
+// Load env vars & validate
 dotenv.config();
+validateEnv();
 
 // Connect to database
 connectDB();
@@ -70,26 +73,45 @@ const allowedOrigins = [
   'http://ldmovies.mydrpet.io.vn',
 ];
 
+const ALLOWED_DOMAIN_SUFFIXES = [
+  '.ngrok-free.dev',
+  '.ngrok-free.app',
+  '.nport.link',
+  '.mydrpet.io.vn',
+  '.vercel.app',
+  '.onrender.com',
+];
+
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.indexOf(origin) !== -1 ||
-        origin.includes('.ngrok-free.dev') ||
-        origin.includes('.nport.link') ||
-        origin.includes('.mydrpet.io.vn') ||
-        origin.includes('.vercel.app') ||
-        origin.includes('.onrender.com')
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
       }
+      try {
+        const { hostname } = new URL(origin);
+        const matched = ALLOWED_DOMAIN_SUFFIXES.some(
+          (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
+        );
+        if (matched) return callback(null, true);
+      } catch (err) {
+        // Invalid URL format
+      }
+      return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
   })
 );
+
+// ─── Health Check Endpoint ────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
 
 // ─── Apply Rate Limiters ──────────────────────────────────────────────────────
 app.use('/api', apiLimiter);
@@ -100,6 +122,12 @@ app.use('/api/users', userRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/comics', comicRoutes);
+app.use('/api/img', imageRoutes);
+
+// ─── 404 Handler cho /api routes không tồn tại ────────────────────────────────
+app.use('/api', (req, res) => {
+  res.status(404).json({ message: `Không tìm thấy endpoint: ${req.method} ${req.originalUrl}` });
+});
 
 // ─── Serve React Production Build ────────────────────────────────────────────
 // Không phụ thuộc NODE_ENV — tự detect xem đã có production build chưa
@@ -109,13 +137,24 @@ const distIndexHtml = path.join(frontendDistPath, 'index.html');
 if (fs.existsSync(distIndexHtml)) {
   // Production: host file tĩnh từ dist/
   console.log('[SERVER] Đã tìm thấy production build, đang host frontend...');
-  app.use(express.static(frontendDistPath, {
-    maxAge: '7d', // Cache file tĩnh 7 ngày trên browser
-    etag: true,
-  }));
+  app.use(
+    express.static(frontendDistPath, {
+      index: false,
+      etag: true,
+      setHeaders: (res, filePath) => {
+        // Asset có hash (ví dụ: assets/index-a1b2c3d4.js) được cache 1 năm
+        if (/\.[0-9a-f]{8,}\.(js|css|woff2|png|jpg|svg|webp)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+        }
+      },
+    })
+  );
 
   // Fallback tất cả các route không phải /api về index.html (cho React Router)
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(distIndexHtml);
   });
 } else {
@@ -137,11 +176,9 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Graceful Crash Prevention ────────────────────────────────────────────────
-// Ngăn Node.js bị crash hoàn toàn khi có lỗi không bắt được
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] uncaughtException:', err.message);
   console.error(err.stack);
-  // Không gọi process.exit() để server tiếp tục chạy
 });
 
 process.on('unhandledRejection', (reason, promise) => {

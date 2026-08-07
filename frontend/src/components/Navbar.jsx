@@ -5,6 +5,7 @@ import { kkphimApi } from '../services/kkphimApi';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useAppStore from '../stores/appStore';
+import useDataSaverStore from '../stores/dataSaverStore';
 
 // Tạo fallback avatar từ tên người dùng (không cần network request)
 function getAvatarUrl(username) {
@@ -115,6 +116,7 @@ function Navbar() {
   const debounceTimeout = useRef(null);
   const { user, isAuthenticated, logout } = useAuthStore();
   const { appMode, toggleAppMode } = useAppStore();
+  const { enabled: dataSaverEnabled, toggle: toggleDataSaver } = useDataSaverStore();
 
   // Đóng mobile menu và suggestions khi đổi route
   useEffect(() => {
@@ -262,6 +264,20 @@ function Navbar() {
               </>
             )}
 
+            {/* Nút Data Saver */}
+            <button
+              onClick={toggleDataSaver}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 border ${
+                dataSaverEnabled
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+              }`}
+              title={dataSaverEnabled ? 'Chế độ tiết kiệm Data: ĐANG BẬT' : 'Bật chế độ tiết kiệm Data'}
+            >
+              <span>⚡ Data Saver</span>
+              <span className={`w-2 h-2 rounded-full ${dataSaverEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+            </button>
+
             {/* Nút chuyển chế độ */}
             <button
               onClick={() => {
@@ -313,43 +329,12 @@ function Navbar() {
 
               {/* Dropdown Gợi Ý Desktop */}
               {showSuggestions && (
-                <div className="absolute top-full mt-2 w-full bg-dark-200 border border-dark-400 rounded-lg shadow-xl overflow-hidden z-50">
-                  {loading ? (
-                    <div className="px-4 py-3 text-gray-400 text-sm">Đang tìm kiếm...</div>
-                  ) : suggestions.length > 0 ? (
-                    <div className="max-h-96 overflow-y-auto">
-                      {suggestions.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={(e) => handleSuggestionClick(item, e)}
-                          type="button"
-                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-all duration-200 text-left group"
-                        >
-                          <img
-                            src={item.poster || item.thumb_url}
-                            alt={item.name}
-                            className="w-12 h-16 object-cover rounded"
-                            onError={(e) => e.target.style.display = 'none'}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white font-medium truncate">{item.name}</div>
-                            <div className="text-gray-400 text-sm truncate">{item.origin_name}</div>
-                            <div className="text-gray-500 text-xs flex items-center gap-2 mt-1">
-                              {item.year && <span>{item.year}</span>}
-                              {item.quality && (
-                                <span className="px-2 py-0.5 bg-primary-600/20 text-primary-400 rounded">
-                                  {item.quality}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : searchQuery.trim().length > 1 ? (
-                    <div className="px-4 py-3 text-gray-400 text-sm">Không tìm thấy kết quả</div>
-                  ) : null}
-                </div>
+                <SearchSuggestions
+                  loading={loading}
+                  suggestions={suggestions}
+                  searchQuery={searchQuery}
+                  onSuggestionClick={handleSuggestionClick}
+                />
               )}
             </div>
           </form>
@@ -475,43 +460,12 @@ function Navbar() {
 
                 {/* Dropdown Gợi Ý Mobile */}
                 {showSuggestions && (
-                  <div className="absolute top-full mt-2 w-full bg-dark-200 border border-dark-400 rounded-lg shadow-xl overflow-hidden z-50">
-                    {loading ? (
-                      <div className="px-4 py-3 text-gray-400 text-sm">Đang tìm kiếm...</div>
-                    ) : suggestions.length > 0 ? (
-                      <div className="max-h-96 overflow-y-auto">
-                        {suggestions.map((item) => (
-                          <button
-                            key={item.id}
-                            onClick={(e) => handleSuggestionClick(item, e)}
-                            type="button"
-                            className="w-full px-4 py-3 flex items-center gap-3 hover:bg-dark-300 transition-colors text-left"
-                          >
-                            <img
-                              src={item.poster || item.thumb_url}
-                              alt={item.name}
-                              className="w-12 h-16 object-cover rounded"
-                              onError={(e) => e.target.style.display = 'none'}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-white font-medium truncate">{item.name}</div>
-                              <div className="text-gray-400 text-sm truncate">{item.origin_name}</div>
-                              <div className="text-gray-500 text-xs flex items-center gap-2 mt-1">
-                                {item.year && <span>{item.year}</span>}
-                                {item.quality && (
-                                  <span className="px-2 py-0.5 bg-primary-600/20 text-primary-400 rounded">
-                                    {item.quality}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    ) : searchQuery.trim().length > 1 ? (
-                      <div className="px-4 py-3 text-gray-400 text-sm">Không tìm thấy kết quả</div>
-                    ) : null}
-                  </div>
+                  <SearchSuggestions
+                    loading={loading}
+                    suggestions={suggestions}
+                    searchQuery={searchQuery}
+                    onSuggestionClick={handleSuggestionClick}
+                  />
                 )}
               </div>
             </form>

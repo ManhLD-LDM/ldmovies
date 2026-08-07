@@ -148,6 +148,11 @@ function ComicReaderPage() {
     }
   }
 
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const dataSaver = localStorage.getItem('ldmovies_datasaver') === '1';
+  const targetWidth = dataSaver ? 540 : Math.min(Math.round((window.innerWidth || 800) * (window.devicePixelRatio || 1)), 900);
+  const targetQuality = dataSaver ? 45 : 62;
+
   return (
     <div className="bg-[#000000] min-h-screen relative text-zinc-200 font-sans selection:bg-white/20">
       
@@ -173,21 +178,26 @@ function ComicReaderPage() {
 
       {/* Reader Images Container */}
       <div className="max-w-4xl mx-auto w-full flex flex-col items-center pb-32">
-        {images.map((img, index) => (
-          <div key={index} className="w-full relative flex items-center justify-center bg-black">
-            <img 
-              src={`${domain_cdn}/${imagePath}/${img.image_file}`}
-              alt={`Trang ${index + 1}`}
-              className="w-full h-auto object-contain select-none"
-              loading={index < 3 ? "eager" : "lazy"}
-              decoding="async"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='1200' viewBox='0 0 800 1200'%3E%3Crect fill='%23111' width='800' height='1200'/%3E%3Ctext x='400' y='610' font-family='Arial' font-size='32' fill='%23444' text-anchor='middle'%3ELỗi tải ảnh%3C/text%3E%3C/svg%3E`;
-              }}
-            />
-          </div>
-        ))}
+        {images.map((img, index) => {
+          const rawUrl = `${domain_cdn}/${imagePath}/${img.image_file}`;
+          const proxyUrl = `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&w=${targetWidth}&q=${targetQuality}`;
+
+          return (
+            <div key={index} className="w-full relative flex items-center justify-center bg-black min-h-[300px]">
+              <img 
+                src={proxyUrl}
+                alt={`Trang ${index + 1}`}
+                className="w-full h-auto object-contain select-none"
+                loading={index < 2 ? "eager" : "lazy"}
+                decoding="async"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = rawUrl; // Fallback directly to original CDN if proxy fails
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Bottom Floating Controls - Minimal Pill */}

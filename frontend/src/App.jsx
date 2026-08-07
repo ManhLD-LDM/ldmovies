@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import useAppStore from './stores/appStore';
 
@@ -34,37 +35,39 @@ function App() {
   const { appMode } = useAppStore();
 
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          {/* Main index routes dynamically based on appMode */}
-          <Route index element={appMode === 'movie' ? <HomePage /> : <Navigate to="/comics" replace />} />
-          
-          {/* Auth and User routes */}
-          <Route path="login" element={<LoginPage />} />
-          <Route path="register" element={<RegisterPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="favourites" element={<FavouritesPage />} />
-          
-          {/* Movie Routes */}
-          <Route path="movies" element={<MoviesPage />} />
-          <Route path="movies/filter" element={<MovieFilterPage />} />
-          <Route path="movies/:id" element={<MovieDetailPage />} />
-          <Route path="anime" element={<AnimePage />} />
-          <Route path="anime/filter" element={<AnimeFilterPage />} />
-          <Route path="anime/:id" element={<AnimeDetailPage />} />
-          <Route path="search" element={<SearchPage />} />
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            {/* Main index routes dynamically based on appMode */}
+            <Route index element={appMode === 'movie' ? <HomePage /> : <Navigate to="/comics" replace />} />
+            
+            {/* Auth and User routes */}
+            <Route path="login" element={<LoginPage />} />
+            <Route path="register" element={<RegisterPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="history" element={<HistoryPage />} />
+            <Route path="favourites" element={<FavouritesPage />} />
+            
+            {/* Movie Routes */}
+            <Route path="movies" element={<MoviesPage />} />
+            <Route path="movies/filter" element={<MovieFilterPage />} />
+            <Route path="movies/:id" element={<MovieDetailPage />} />
+            <Route path="anime" element={<AnimePage />} />
+            <Route path="anime/filter" element={<AnimeFilterPage />} />
+            <Route path="anime/:id" element={<AnimeDetailPage />} />
+            <Route path="search" element={<SearchPage />} />
 
-          {/* Comic Routes */}
-          <Route path="comics">
-            <Route index element={<ComicHomePage />} />
-            <Route path=":slug" element={<ComicDetailPage />} />
-            <Route path=":slug/chapter/:chapterId" element={<ComicReaderPage />} />
+            {/* Comic Routes */}
+            <Route path="comics">
+              <Route index element={<ComicHomePage />} />
+              <Route path=":slug" element={<ComicDetailPage />} />
+              <Route path=":slug/chapter/:chapterId" element={<ComicReaderPage />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

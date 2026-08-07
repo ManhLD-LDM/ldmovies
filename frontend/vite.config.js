@@ -1,8 +1,54 @@
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,woff2,png,jpg,jpeg}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/(phimimg\.com|img\.otruyenapi\.com|sv1\.otruyencdn\.com)\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'poster-image-cache',
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 ngày
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /\/api\/(comics|img)\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'api-response-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 6, // 6 giờ
+              },
+            },
+          },
+        ],
+        navigateFallbackDenylist: [/^\/api\//],
+      },
+      manifest: {
+        name: 'LDMovies & Comics',
+        short_name: 'LDMovies',
+        description: 'Xem Phim Lẻ, Phim Bộ, Anime và Đọc Truyện Tranh Miễn Phí',
+        theme_color: '#09090B',
+        background_color: '#09090B',
+        display: 'standalone',
+        start_url: '/',
+      },
+    }),
+  ],
   server: {
     // ─── DEV SERVER (chỉ dùng khi chạy START_DEV.bat) ───────────────────────
     host: true,
@@ -38,7 +84,7 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'ui-vendor': ['react-icons', 'react-toastify'],
-          'player-vendor': ['hls.js', 'react-player'],
+          'player-vendor': ['hls.js'],
         }
       }
     }

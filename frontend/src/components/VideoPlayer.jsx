@@ -284,12 +284,22 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
 
         if (isM3U8) {
             if (Hls.isSupported()) {
-                // Chrome, Firefox, Edge: dùng hls.js
+                const savedQuality = localStorage.getItem('ldmovies_quality');
+                const isAuto = !savedQuality || savedQuality === 'Auto' || savedQuality === '-1';
+
+                // Chrome, Firefox, Edge: dùng hls.js với Data Saver tối ưu
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
-                    maxBufferLength: 30, // Limit forward buffer to 30 seconds
+                    maxBufferLength: 30, // Max forward buffer 30s
                     maxMaxBufferLength: 60,
+                    startLevel: isAuto ? -1 : 0, // 0 = level thấp nhất an toàn khi khởi tạo
+                    capLevelToPlayerSize: true, // Không bao giờ tải resolution > kích thước player
+                    capLevelOnFPSDrop: true,
+                    maxBufferSize: 20 * 1000 * 1000, // Max buffer 20MB
+                    backBufferLength: 30, // Xả buffer cũ đã xem
+                    abrEwmaDefaultEstimate: 800_000, // Khởi tạo ước tính 800 kbps thay vì 5 Mbps
+                    startFragPrefetch: false,
                 });
                 hlsRef.current = hls;
                 
@@ -323,26 +333,19 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                         setLevels(filteredLevels);
 
                         // --- Data Saver: Apply saved quality or limit default resolution ---
-                        const savedQuality = localStorage.getItem('ldmovies_quality');
-                        
-                        if (savedQuality === 'Auto' || savedQuality === '-1') {
+                        if (isAuto) {
                             hls.currentLevel = -1;
                         } else {
-                            // Default to 720p or 480p on mobile if no preference saved
                             const isMobileScreen = window.innerWidth <= 768;
-                            const targetHeight = savedQuality ? parseInt(savedQuality, 10) : (isMobileScreen ? 480 : 720);
-                            
+                            const targetHeight = parseInt(savedQuality, 10) || (isMobileScreen ? 480 : 720);
                             let targetLevel = filteredLevels.find(l => Math.abs(l.height - targetHeight) <= 50);
                             
                             if (targetLevel) {
-                                hls.startLevel = targetLevel.originalIndex;
                                 hls.currentLevel = targetLevel.originalIndex;
                                 setCurrentLevel(targetLevel.originalIndex);
                                 setIsAutoQuality(false);
                             } else {
-                                // Fallback to the lowest quality to save data if target not found
                                 const lowestLevel = filteredLevels[filteredLevels.length - 1];
-                                hls.startLevel = lowestLevel.originalIndex;
                                 hls.currentLevel = lowestLevel.originalIndex;
                                 setCurrentLevel(lowestLevel.originalIndex);
                                 setIsAutoQuality(false);
@@ -397,6 +400,21 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
         };
     }, [videoUrl, initialTime]);
 
+    // Dừng tải fragment khi tab ẩn / video pause để tiết kiệm data
+    useEffect(() => {
+        const onVisibilityChange = () => {
+            const hls = hlsRef.current;
+            if (!hls) return;
+            if (document.hidden && videoRef.current?.paused) {
+                hls.stopLoad();
+            } else if (!document.hidden) {
+                hls.startLoad();
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    }, []);
+
     // ── Controls hide/show ─────────────────────────────────────────────────
     // Fix: memory leak — cleanup timeout khi unmount
     useEffect(() => {
@@ -413,10 +431,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
             clearTimeout(controlsTimeoutRef.current);
         }
         controlsTimeoutRef.current = setTimeout(() => {
-            setShowControls((playing) => {
-                // Dùng functional update để tránh stale closure với isPlaying
-                return false;
-            });
+            setShowControls(false);
         }, 3000);
     }, []);
 

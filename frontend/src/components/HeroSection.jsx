@@ -33,7 +33,9 @@ function HeroSection({ movies = [] }) {
     <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] overflow-hidden bg-bg-900">
       {movies.map((movie, index) => {
         const isActive = index === currentIndex;
-        // "Xem Ngay" dẫn thẳng vào watch page, "Chi Tiết" vào trang thông tin
+        const isNext = index === (currentIndex + 1) % movies.length;
+        if (!isActive && !isNext) return null; // Tránh render 5 DOM node & nạp 5 ảnh cùng lúc
+
         const detailPath = movie.type === 'hoathinh' || !movie.type ? `/anime/${movie.slug}` : `/movies/${movie.slug}`;
 
         return (
@@ -48,6 +50,9 @@ function HeroSection({ movies = [] }) {
               <img
                 src={movie.thumb_url || movie.poster}
                 alt={movie.name}
+                loading={index === 0 ? 'eager' : 'lazy'}
+                fetchpriority={index === 0 ? 'high' : 'low'}
+                decoding="async"
                 className={`w-full h-full object-cover ${isActive ? 'animate-slow-zoom' : ''}`}
               />
               <div className="absolute inset-0 bg-gradient-to-r from-black via-black/70 to-transparent"></div>

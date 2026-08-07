@@ -261,11 +261,10 @@ export const kkphimApi = {
         return kkphimApi.getAllAnime(page, limit);
       }
 
-      const firstSlug = categoryObjects[0].slug;
-      
-      // Use the first category's endpoint and fetch up to 64 items (API maximum)
+      // Use the first category's endpoint with specified limit (capped at API max 64)
+      const fetchLimit = Math.min(Math.max(limit, 1), 64);
       const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, {
-        params: { page, limit: 64 },
+        params: { page, limit: fetchLimit },
       });
       
       let items = response.data?.data?.items || [];
