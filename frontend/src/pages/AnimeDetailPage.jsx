@@ -190,33 +190,20 @@ function AnimeDetailPage() {
                 poster: anime.thumb_url || anime.poster_url || anime.poster,
               }}
             />
-
-            {/* Episode navigation below video */}
-            <div className="mt-8">
-              <EpisodeList
-                title="Chọn tập khác"
-                episodes={episodes}
-                selectedEpisode={selectedEpisode}
-                onEpisodeClick={handleEpisodeClick}
-                playerRef={playerRef}
-              />
-            </div>
           </div>
         </div>
       )}
 
-      {/* Episodes List — chỉ hiện khi player chưa mở */}
-      {!showPlayer && (
-        <div className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-6">
-          <EpisodeList
-            title="Danh sách tập"
-            episodes={episodes}
-            selectedEpisode={selectedEpisode}
-            onEpisodeClick={handleEpisodeClick}
-            playerRef={playerRef}
-          />
-        </div>
-      )}
+      {/* Episodes List - Duy nhất 1 danh sách tập thống nhất */}
+      <div className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-6">
+        <EpisodeList
+          title="Danh sách tập"
+          episodes={episodes}
+          selectedEpisode={selectedEpisode}
+          onEpisodeClick={handleEpisodeClick}
+          playerRef={playerRef}
+        />
+      </div>
 
       {/* Recommendations Section */}
       <div className="max-w-7xl mx-auto px-2 md:px-4 pb-12 space-y-6">
