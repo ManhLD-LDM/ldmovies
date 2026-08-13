@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FiCalendar, FiClock, FiHeart, FiStar, FiTv, FiX } from 'react-icons/fi';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
 import { useContentDetail } from '../stores/useContentDetail';
@@ -192,26 +193,13 @@ function AnimeDetailPage() {
 
             {/* Episode navigation below video */}
             <div className="mt-8">
-              <h3 className="text-xl font-black text-white mb-5 flex items-center gap-2">
-                <div className="w-1 h-6 bg-gradient-to-b from-red-500 to-pink-500 rounded-full" />
-                <span>Chọn tập khác</span>
-              </h3>
-              <div className="max-h-64 overflow-y-auto glass-effect rounded-xl p-3 sm:p-4 custom-scrollbar">
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2 sm:gap-3">
-                  {episodes.map((ep, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleEpisodeClick(ep, playerRef)}
-                      className={`px-3 py-2.5 rounded-xl font-semibold text-sm transition-all transform hover:scale-105 shadow-md ${selectedEpisode?.name === ep.name
-                        ? 'bg-gradient-to-br from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30'
-                        : 'bg-white/10 text-gray-300 hover:bg-gradient-to-br hover:from-red-600 hover:to-red-500 hover:text-white'
-                        }`}
-                    >
-                      {ep.name || `${idx + 1}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <EpisodeList
+                title="Chọn tập khác"
+                episodes={episodes}
+                selectedEpisode={selectedEpisode}
+                onEpisodeClick={handleEpisodeClick}
+                playerRef={playerRef}
+              />
             </div>
           </div>
         </div>
@@ -219,48 +207,14 @@ function AnimeDetailPage() {
 
       {/* Episodes List — chỉ hiện khi player chưa mở */}
       {!showPlayer && (
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <h2 className="text-2xl font-black text-white mb-8 flex items-center gap-3">
-            <div className="w-1 h-8 bg-gradient-to-b from-red-500 to-pink-500 rounded-full" />
-            <span>Danh Sách Tập Vietsub</span>
-          </h2>
-          {episodes.length > 0 ? (
-            episodes.length > 24 ? (
-              <div className="max-h-96 overflow-y-auto glass-effect rounded-xl p-4 sm:p-5 custom-scrollbar">
-                <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-9 lg:grid-cols-11 xl:grid-cols-12 gap-2 sm:gap-3">
-                  {episodes.map((ep, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleEpisodeClick(ep, playerRef)}
-                      className={`px-4 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 shadow-md ${selectedEpisode?.name === ep.name
-                        ? 'bg-gradient-to-br from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30'
-                        : 'glass-effect text-gray-300 hover:bg-gradient-to-br hover:from-red-600 hover:to-red-500 hover:text-white'
-                        }`}
-                    >
-                      {ep.name || `Tập ${idx + 1}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-9 lg:grid-cols-11 xl:grid-cols-12 gap-2 sm:gap-3">
-                {episodes.map((ep, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleEpisodeClick(ep, playerRef)}
-                    className={`px-4 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 shadow-md ${selectedEpisode?.name === ep.name
-                      ? 'bg-gradient-to-br from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30'
-                      : 'glass-effect text-gray-300 hover:bg-gradient-to-br hover:from-red-600 hover:to-red-500 hover:text-white'
-                      }`}
-                  >
-                    {ep.name || `Tập ${idx + 1}`}
-                  </button>
-                ))}
-              </div>
-            )
-          ) : (
-            <p className="text-gray-400 text-center py-8">Chưa có video Vietsub nào</p>
-          )}
+        <div className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-6">
+          <EpisodeList
+            title="Danh sách tập"
+            episodes={episodes}
+            selectedEpisode={selectedEpisode}
+            onEpisodeClick={handleEpisodeClick}
+            playerRef={playerRef}
+          />
         </div>
       )}
 
