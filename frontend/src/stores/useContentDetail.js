@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { kkphimApi } from '../services/kkphimApi';
@@ -40,6 +40,15 @@ export function useContentDetail(id) {
     const [showPlayer, setShowPlayer] = useState(false);
     const [initialTime, setInitialTime] = useState(0);
     const [hasClosedPlayer, setHasClosedPlayer] = useState(false);
+
+    // Ref kiểm soát tự động khôi phục lịch sử xem (chỉ tự động mở 1 lần duy nhất khi mới mount trang)
+    const hasCheckedAutoResumeRef = useRef(false);
+
+    // Reset ref khi id phim thay đổi
+    useEffect(() => {
+        hasCheckedAutoResumeRef.current = false;
+        setHasClosedPlayer(false);
+    }, [id]);
 
     // State lưu gợi ý xem tiếp
     const [franchiseRecommendations, setFranchiseRecommendations] = useState([]);
@@ -151,7 +160,7 @@ export function useContentDetail(id) {
         fetchRecommendations();
     }, [content, id]);
 
-    // ── Sync player với URL params ─────────────────────────────────────────
+    // ── Sync player với URL params & Khôi phục lịch sử xem ─────────────────
     useEffect(() => {
         const episodeParam = searchParams.get('ep');
         const timeParam = parseInt(searchParams.get('t') || '0', 10);
@@ -164,9 +173,12 @@ export function useContentDetail(id) {
                 setSelectedEpisode(urlEpisode);
                 setShowPlayer(true);
                 setInitialTime(isNaN(timeParam) ? 0 : timeParam);
+                hasCheckedAutoResumeRef.current = true;
             }
         } else if (!episodeParam && episodes.length > 0) {
-            if (!hasClosedPlayer) {
+            // Tự động khôi phục lịch sử xem CHỈ KHI lần đầu tiên load trang và chưa xem tập nào
+            if (!hasCheckedAutoResumeRef.current && !hasClosedPlayer) {
+                hasCheckedAutoResumeRef.current = true;
                 const watchHistory = useWatchHistoryStore.getState().watchHistory;
                 const historyItem = watchHistory.find(h => h.slug === id || h.id === id);
                 if (historyItem && historyItem.episodeName) {
@@ -187,6 +199,7 @@ export function useContentDetail(id) {
                 }
             }
             
+            // Nếu không có ?ep trong URL (do người dùng ấn BACK hoặc ấn nút Đóng player):
             setShowPlayer(false);
             setSelectedEpisode(null);
             setInitialTime(0);
@@ -202,6 +215,7 @@ export function useContentDetail(id) {
         if (isAlreadyPlaying) {
             navigate(`?ep=${epParam}`, { replace: true });
         } else {
+            // Mở trình phát video lần đầu bằng URL ?ep=...
             navigate(`?ep=${epParam}`);
         }
 
