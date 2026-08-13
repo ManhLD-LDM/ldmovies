@@ -6,10 +6,19 @@ import useAuthStore from './authStore';
 import useFavoritesStore from './favoritesStore';
 import useWatchHistoryStore from './watchHistoryStore';
 
+// Helper trích xuất từ khóa thương hiệu (franchise keyword) từ tên phim
+function getFranchiseKeyword(name, originName) {
+    if (!name && !originName) return null;
+    const target = name || originName;
+    const cleanName = target.split(/[:\-\–\—]|Movie|Phần|Season|Part/i)[0].trim();
+    const wordOnly = cleanName.replace(/\s+\d+.*$/, '').trim();
+    return wordOnly.length >= 3 ? wordOnly : null;
+}
+
 /**
  * Shared hook cho MovieDetailPage & AnimeDetailPage.
- * Loại bỏ logic trùng lặp giữa 2 trang: fetch phim, sync URL params,
- * xử lý favorite, và deep link timestamp.
+ * Xử lý fetch phim, sync URL params, favorite, deep link,
+ * và tự động gợi ý xem tiếp (Cùng bộ & Cùng thể loại).
  *
  * @param {string} id - slug hoặc id của phim/anime (từ useParams)
  */
@@ -31,6 +40,11 @@ export function useContentDetail(id) {
     const [showPlayer, setShowPlayer] = useState(false);
     const [initialTime, setInitialTime] = useState(0);
     const [hasClosedPlayer, setHasClosedPlayer] = useState(false);
+
+    // State lưu gợi ý xem tiếp
+    const [franchiseRecommendations, setFranchiseRecommendations] = useState([]);
+    const [genreRecommendations, setGenreRecommendations] = useState([]);
+    const [recommendationsLoading, setRecommendationsLoading] = useState(false);
 
     // Xác định loại nội dung: hoathinh = true anime; series/single = movie
     const isTrueAnime = content?.type === 'hoathinh';
@@ -67,8 +81,77 @@ export function useContentDetail(id) {
         fetchContent();
     }, [id]);
 
+    // ── Fetch Recommendations (Cùng bộ & Cùng thể loại) ────────────────────
+    useEffect(() => {
+        if (!content) return;
+
+        const fetchRecommendations = async () => {
+            setRecommendationsLoading(true);
+            try {
+                let franchiseItems = [];
+
+                // 1. Gợi ý cùng bộ (Franchise Recommendations)
+                const franchiseKeyword = getFranchiseKeyword(content.name, content.origin_name);
+                if (franchiseKeyword) {
+                    try {
+                        const searchRes = await kkphimApi.searchAnime(franchiseKeyword);
+                        franchiseItems = (searchRes.data || []).filter(
+                            item => item.slug !== id && item.id !== id && item.slug !== content.slug
+                        );
+                        setFranchiseRecommendations(franchiseItems);
+                    } catch (err) {
+                        console.error('Error fetching franchise recommendations:', err);
+                        setFranchiseRecommendations([]);
+                    }
+                } else {
+                    setFranchiseRecommendations([]);
+                }
+
+                // 2. Gợi ý cùng thể loại (Genre Recommendations)
+                const categories = content.category || [];
+                if (categories.length > 0) {
+                    try {
+                        const allCatObjects = await kkphimApi.getAllCategories();
+                        
+                        const matchedCatObjects = categories.map(cat => {
+                            if (typeof cat === 'object' && cat.slug) return cat;
+                            const catName = typeof cat === 'string' ? cat : cat.name;
+                            return allCatObjects.find(c => c.name.toLowerCase() === (catName || '').toLowerCase());
+                        }).filter(Boolean);
+
+                        if (matchedCatObjects.length > 0) {
+                            const isAnime = content.type === 'hoathinh';
+                            const genreRes = isAnime
+                                ? await kkphimApi.filterAnimeByCategories([matchedCatObjects[0]], 1, 24)
+                                : await kkphimApi.filterMoviesByCategories([matchedCatObjects[0]], 1, 24);
+
+                            const franchiseSlugs = new Set(franchiseItems.map(f => f.slug));
+                            const genreItems = (genreRes.data || []).filter(
+                                item => item.slug !== id && item.id !== id && item.slug !== content.slug && !franchiseSlugs.has(item.slug)
+                            );
+
+                            setGenreRecommendations(genreItems);
+                        } else {
+                            setGenreRecommendations([]);
+                        }
+                    } catch (err) {
+                        console.error('Error fetching genre recommendations:', err);
+                        setGenreRecommendations([]);
+                    }
+                } else {
+                    setGenreRecommendations([]);
+                }
+            } catch (error) {
+                console.error('Error fetching recommendations:', error);
+            } finally {
+                setRecommendationsLoading(false);
+            }
+        };
+
+        fetchRecommendations();
+    }, [content, id]);
+
     // ── Sync player với URL params ─────────────────────────────────────────
-    // Deep link format: ?ep=<tên tập>&t=<giây>
     useEffect(() => {
         const episodeParam = searchParams.get('ep');
         const timeParam = parseInt(searchParams.get('t') || '0', 10);
@@ -83,7 +166,6 @@ export function useContentDetail(id) {
                 setInitialTime(isNaN(timeParam) ? 0 : timeParam);
             }
         } else if (!episodeParam && episodes.length > 0) {
-            // Kiểm tra lịch sử xem để tự động mở tập phim đang xem dở
             if (!hasClosedPlayer) {
                 const watchHistory = useWatchHistoryStore.getState().watchHistory;
                 const historyItem = watchHistory.find(h => h.slug === id || h.id === id);
@@ -94,14 +176,13 @@ export function useContentDetail(id) {
                     
                     if (historyEpIndex >= 0) {
                         let targetEpisode = episodes[historyEpIndex];
-                        // Nếu đã xem hết (còn < 10s) và có tập tiếp theo -> Chuyển tập tiếp
                         const isFinished = historyItem.duration > 0 && (historyItem.duration - historyItem.progress < 10);
                         if (isFinished && historyEpIndex + 1 < episodes.length) {
                             targetEpisode = episodes[historyEpIndex + 1];
                         }
                         
                         navigate(`?ep=${targetEpisode.name || targetEpisode.slug}`, { replace: true });
-                        return; // Ngừng thực thi để đợi URL cập nhật
+                        return;
                     }
                 }
             }
@@ -116,7 +197,7 @@ export function useContentDetail(id) {
     const handleEpisodeClick = (episode, playerRef) => {
         const isAlreadyPlaying = showPlayer && selectedEpisode;
         const epParam = episode.name || episode.slug;
-        setInitialTime(0); // Reset timestamp khi đổi tập
+        setInitialTime(0);
 
         if (isAlreadyPlaying) {
             navigate(`?ep=${epParam}`, { replace: true });
@@ -144,7 +225,6 @@ export function useContentDetail(id) {
         if (!content) return;
 
         if (isTrueAnime) {
-            // Xử lý anime favorite
             if (isFavorited) {
                 const result = await removeFavoriteAnime(contentId);
                 result.success
@@ -161,7 +241,6 @@ export function useContentDetail(id) {
                     : toast.error(result.message);
             }
         } else {
-            // Xử lý movie/series favorite
             if (isFavorited) {
                 const result = await removeFavoriteMovie(contentId);
                 result.success
@@ -189,6 +268,9 @@ export function useContentDetail(id) {
         initialTime,
         isFavorited,
         isTrueAnime,
+        franchiseRecommendations,
+        genreRecommendations,
+        recommendationsLoading,
         handleEpisodeClick,
         closePlayer,
         handleFavoriteToggle,

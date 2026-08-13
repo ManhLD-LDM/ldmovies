@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FiCalendar, FiClock, FiHeart, FiPlay, FiStar, FiX } from 'react-icons/fi';
 import { Link, useParams } from 'react-router-dom';
+import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
 import { useContentDetail } from '../stores/useContentDetail';
 
@@ -9,7 +10,7 @@ function MovieDetailPage() {
   const playerRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Dùng shared hook — loại bỏ logic trùng lặp với AnimeDetailPage
+  // Dùng shared hook — xử lý content, episodes, favorites và recommendations
   const {
     content: movie,
     episodes,
@@ -18,6 +19,9 @@ function MovieDetailPage() {
     showPlayer,
     initialTime,
     isFavorited,
+    franchiseRecommendations,
+    genreRecommendations,
+    recommendationsLoading,
     handleEpisodeClick,
     closePlayer,
     handleFavoriteToggle,
@@ -248,6 +252,27 @@ function MovieDetailPage() {
               </div>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Recommendations Section */}
+      <div className="max-w-7xl mx-auto px-2 md:px-4 pb-12 space-y-6">
+        {franchiseRecommendations.length > 0 && (
+          <MovieSection
+            title="Gợi Ý Cùng Bộ (Franchise)"
+            movies={franchiseRecommendations}
+            loading={recommendationsLoading}
+            contentType="movie"
+          />
+        )}
+
+        {genreRecommendations.length > 0 && (
+          <MovieSection
+            title="Gợi Ý Cùng Thể Loại"
+            movies={genreRecommendations}
+            loading={recommendationsLoading}
+            contentType="movie"
+          />
         )}
       </div>
     </div>
