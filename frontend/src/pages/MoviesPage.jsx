@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react';
 import { FiFilter } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
+import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
 
 function MoviesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const typeParam = searchParams.get('type') || 'all';
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+
   const [movies, setMovies] = useState([]);
-  const [selectedType, setSelectedType] = useState('all'); // 'all', 'phim-le', 'phim-bo'
+  const [selectedType, setSelectedType] = useState(typeParam); // 'all', 'phim-le', 'phim-bo'
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(activePage);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchMovies = async () => {
@@ -18,21 +25,18 @@ function MoviesPage() {
       try {
         let response;
         
-        if (selectedType === 'all') {
-          response = await kkphimApi.getAllMoviesAndSeries(page, 24);
-        } else if (selectedType === 'phim-le') {
-          response = await kkphimApi.getAllMovies(page, 24);
-        } else if (selectedType === 'phim-bo') {
-          response = await kkphimApi.getAllTVSeries(page, 24);
+        if (typeParam === 'all') {
+          response = await kkphimApi.getAllMoviesAndSeries(activePage, 24);
+        } else if (typeParam === 'phim-le') {
+          response = await kkphimApi.getAllMovies(activePage, 24);
+        } else if (typeParam === 'phim-bo') {
+          response = await kkphimApi.getAllTVSeries(activePage, 24);
         }
         
-        const newMovies = response.data || [];
-        if (page === 1) {
-          setMovies(newMovies);
-        } else {
-          setMovies(prev => [...prev, ...newMovies]);
-        }
-        setHasMore(newMovies.length > 0);
+        setMovies(response?.data || []);
+        setTotalPages(response?.pagination?.totalPages || 1);
+        setCurrentPage(response?.pagination?.currentPage || activePage);
+        setSelectedType(typeParam);
       } catch (error) {
         console.error('Error fetching movies:', error);
       } finally {
@@ -40,12 +44,15 @@ function MoviesPage() {
       }
     };
     fetchMovies();
-  }, [selectedType, page]);
+  }, [typeParam, activePage]);
 
   const handleTypeChange = (type) => {
     setSelectedType(type);
-    setPage(1);
-    setMovies([]);
+    navigate(`/movies?type=${type}&page=1`);
+  };
+
+  const handlePageChange = (newPage) => {
+    navigate(`/movies?type=${selectedType}&page=${newPage}`);
   };
 
   return (
@@ -104,19 +111,15 @@ function MoviesPage() {
       </div>
 
       {/* Movies Grid */}
-      <MovieGrid movies={movies} loading={loading && page === 1} contentType="movie" />
+      <MovieGrid movies={movies} loading={loading} contentType="movie" />
 
-      {/* Load More Button */}
-      {hasMore && movies.length > 0 && (
-        <div className="text-center mt-8">
-          <button
-            onClick={() => setPage(prev => prev + 1)}
-            disabled={loading}
-            className="px-8 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Đang tải...' : 'Tải Thêm'}
-          </button>
-        </div>
+      {/* Pagination */}
+      {!loading && movies.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+        />
       )}
     </div>
   );

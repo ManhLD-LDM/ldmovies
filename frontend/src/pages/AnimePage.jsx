@@ -1,27 +1,30 @@
 import { useEffect, useState } from 'react';
 import { FiFilter } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
+import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
 
 function AnimePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+
   const [animes, setAnimes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(activePage);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchAnimes = async () => {
       setLoading(true);
       try {
-        const response = await kkphimApi.getAllAnime(page);
-        if (page === 1) {
-          setAnimes(response.data || []);
-        } else {
-          setAnimes(prev => [...prev, ...(response.data || [])]);
-        }
-        setHasMore(response.data && response.data.length > 0);
+        const response = await kkphimApi.getAllAnime(activePage, 24);
+        setAnimes(response?.data || []);
+        setTotalPages(response?.pagination?.totalPages || 1);
+        setCurrentPage(response?.pagination?.currentPage || activePage);
       } catch (error) {
         console.error('Error fetching Vietsub anime:', error);
       } finally {
@@ -29,7 +32,11 @@ function AnimePage() {
       }
     };
     fetchAnimes();
-  }, [page]);
+  }, [activePage]);
+
+  const handlePageChange = (newPage) => {
+    navigate(`/anime?page=${newPage}`);
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -51,19 +58,15 @@ function AnimePage() {
       </div>
 
       {/* Anime Grid */}
-      <MovieGrid movies={animes} loading={loading && page === 1} contentType="anime" />
+      <MovieGrid movies={animes} loading={loading} contentType="anime" />
 
-      {/* Load More Button */}
-      {hasMore && animes.length > 0 && (
-        <div className="text-center mt-8">
-          <button
-            onClick={() => setPage(prev => prev + 1)}
-            disabled={loading}
-            className="px-8 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Đang tải...' : 'Tải Thêm'}
-          </button>
-        </div>
+      {/* Pagination */}
+      {!loading && animes.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+        />
       )}
     </div>
   );
