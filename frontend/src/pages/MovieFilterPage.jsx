@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { FiFilter, FiX } from 'react-icons/fi';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
 import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
+import { sortMovies, SORT_OPTIONS } from '../utils/sortUtils';
 
 function MovieFilterPage() {
   const [searchParams] = useSearchParams();
@@ -20,6 +21,9 @@ function MovieFilterPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
+  const sortParam = searchParams.get('sort') || 'newest';
+  const [sortOption, setSortOption] = useState(sortParam);
+
   // Fetch categories on mount and trigger initial search if URL contains params
   useEffect(() => {
     const fetchCategories = async () => {
@@ -31,13 +35,16 @@ function MovieFilterPage() {
         const categoriesParam = searchParams.get('categories');
         const pageParam = parseInt(searchParams.get('page') || '1', 10);
         const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+        const currentSort = searchParams.get('sort') || 'newest';
+
+        setSortOption(currentSort);
 
         if (categoriesParam) {
           const slugs = categoriesParam.split(',');
           const cats = categories.filter(c => slugs.includes(c.slug));
           if (cats.length > 0) {
             setSelectedCategories(cats);
-            fetchFilteredMovies(cats, activePage);
+            fetchFilteredMovies(cats, activePage, currentSort);
           } else {
             setHasSearched(false);
             setFilteredMovies([]);
@@ -56,16 +63,19 @@ function MovieFilterPage() {
     fetchCategories();
   }, [searchParams]);
 
-  const fetchFilteredMovies = async (categories, page = 1) => {
+  const fetchFilteredMovies = async (categories, page = 1, sort = sortOption) => {
     if (!categories || categories.length === 0) return;
 
     setLoading(true);
     setHasSearched(true);
     try {
       const response = await kkphimApi.filterMoviesByCategories(categories, page, 24);
-      setFilteredMovies(response.data || []);
+      const rawMovies = response.data || [];
+      const sorted = sortMovies(rawMovies, sort);
+      
+      setFilteredMovies(sorted);
       setTotalPages(response.pagination?.totalPages || 1);
-      setTotalItems(response.pagination?.totalItems || response.data?.length || 0);
+      setTotalItems(response.pagination?.totalItems || rawMovies.length || 0);
       setCurrentPage(response.pagination?.currentPage || page);
     } catch (error) {
       console.error('Error filtering movies:', error);
@@ -92,13 +102,24 @@ function MovieFilterPage() {
     }
 
     const slugs = categories.map(c => c.slug).join(',');
-    navigate(`/movies/filter?categories=${slugs}&page=1`);
+    navigate(`/movies/filter?categories=${slugs}&page=1&sort=${sortOption}`);
+  };
+
+  const handleSortChange = (newSort) => {
+    setSortOption(newSort);
+    const sorted = sortMovies(filteredMovies, newSort);
+    setFilteredMovies(sorted);
+
+    if (selectedCategories.length > 0) {
+      const slugs = selectedCategories.map(c => c.slug).join(',');
+      navigate(`/movies/filter?categories=${slugs}&page=${currentPage}&sort=${newSort}`, { replace: true });
+    }
   };
 
   const handlePageChange = (newPage) => {
     if (selectedCategories.length === 0) return;
     const slugs = selectedCategories.map(c => c.slug).join(',');
-    navigate(`/movies/filter?categories=${slugs}&page=${newPage}`);
+    navigate(`/movies/filter?categories=${slugs}&page=${newPage}&sort=${sortOption}`);
   };
 
   const clearAll = () => {
@@ -192,8 +213,9 @@ function MovieFilterPage() {
         )}
       </div>
 
-      {/* Search Button */}
-      <div className="flex justify-center mb-8">
+      {/* Search Button & Sort Options */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
+        <div className="hidden sm:block"></div>
         <button
           onClick={() => handleSearch()}
           disabled={selectedCategories.length === 0 || loading}
@@ -201,6 +223,22 @@ function MovieFilterPage() {
         >
           {loading ? 'Đang tìm kiếm...' : `Tìm Kiếm${selectedCategories.length > 0 ? ` (${selectedCategories.length} thể loại)` : ''}`}
         </button>
+
+        {/* Sort Selector */}
+        <div className="flex items-center gap-2 bg-dark-300 px-3 py-2 rounded-lg border border-dark-400">
+          <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Sắp xếp:</span>
+          <select
+            value={sortOption}
+            onChange={(e) => handleSortChange(e.target.value)}
+            className="bg-transparent text-white text-sm focus:outline-none cursor-pointer font-medium"
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value} className="bg-dark-300 text-white">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Results */}

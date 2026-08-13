@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
 import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
+import { sortMovies, SORT_OPTIONS } from '../utils/sortUtils';
 
 function AnimeFilterPage() {
   const [searchParams] = useSearchParams();
@@ -20,6 +21,9 @@ function AnimeFilterPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
+  const sortParam = searchParams.get('sort') || 'newest';
+  const [sortOption, setSortOption] = useState(sortParam);
+
   // Load categories and fetch filtered anime if URL contains query parameters
   useEffect(() => {
     const fetchCategories = async () => {
@@ -31,13 +35,16 @@ function AnimeFilterPage() {
         const categoriesParam = searchParams.get('categories');
         const pageParam = parseInt(searchParams.get('page') || '1', 10);
         const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+        const currentSort = searchParams.get('sort') || 'newest';
+
+        setSortOption(currentSort);
 
         if (categoriesParam) {
           const slugs = categoriesParam.split(',');
           const cats = categories.filter(c => slugs.includes(c.slug));
           if (cats.length > 0) {
             setSelectedCategories(cats);
-            fetchFilteredAnime(cats, activePage);
+            fetchFilteredAnime(cats, activePage, currentSort);
           } else {
             setHasSearched(false);
             setFilteredAnimes([]);
@@ -56,16 +63,19 @@ function AnimeFilterPage() {
     fetchCategories();
   }, [searchParams]);
 
-  const fetchFilteredAnime = async (categories, page = 1) => {
+  const fetchFilteredAnime = async (categories, page = 1, sort = sortOption) => {
     if (!categories || categories.length === 0) return;
 
     setLoading(true);
     setHasSearched(true);
     try {
       const response = await kkphimApi.filterAnimeByCategories(categories, page, 24);
-      setFilteredAnimes(response.data || []);
+      const rawAnimes = response.data || [];
+      const sorted = sortMovies(rawAnimes, sort);
+
+      setFilteredAnimes(sorted);
       setTotalPages(response.pagination?.totalPages || 1);
-      setTotalItems(response.pagination?.totalItems || response.data?.length || 0);
+      setTotalItems(response.pagination?.totalItems || rawAnimes.length || 0);
       setCurrentPage(response.pagination?.currentPage || page);
     } catch (error) {
       console.error('Error filtering anime:', error);
@@ -92,13 +102,24 @@ function AnimeFilterPage() {
     }
 
     const slugs = categories.map(c => c.slug).join(',');
-    navigate(`/anime/filter?categories=${slugs}&page=1`);
+    navigate(`/anime/filter?categories=${slugs}&page=1&sort=${sortOption}`);
+  };
+
+  const handleSortChange = (newSort) => {
+    setSortOption(newSort);
+    const sorted = sortMovies(filteredAnimes, newSort);
+    setFilteredAnimes(sorted);
+
+    if (selectedCategories.length > 0) {
+      const slugs = selectedCategories.map(c => c.slug).join(',');
+      navigate(`/anime/filter?categories=${slugs}&page=${currentPage}&sort=${newSort}`, { replace: true });
+    }
   };
 
   const handlePageChange = (newPage) => {
     if (selectedCategories.length === 0) return;
     const slugs = selectedCategories.map(c => c.slug).join(',');
-    navigate(`/anime/filter?categories=${slugs}&page=${newPage}`);
+    navigate(`/anime/filter?categories=${slugs}&page=${newPage}&sort=${sortOption}`);
   };
 
   const clearAll = () => {
@@ -192,8 +213,9 @@ function AnimeFilterPage() {
         )}
       </div>
 
-      {/* Search Button */}
-      <div className="flex justify-center mb-8">
+      {/* Search Button & Sort Options */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
+        <div className="hidden sm:block"></div>
         <button
           onClick={() => handleSearch()}
           disabled={selectedCategories.length === 0 || loading}
@@ -201,6 +223,22 @@ function AnimeFilterPage() {
         >
           {loading ? 'Đang tìm kiếm...' : `Tìm Kiếm${selectedCategories.length > 0 ? ` (${selectedCategories.length} thể loại)` : ''}`}
         </button>
+
+        {/* Sort Selector */}
+        <div className="flex items-center gap-2 bg-dark-300 px-3 py-2 rounded-lg border border-dark-400">
+          <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Sắp xếp:</span>
+          <select
+            value={sortOption}
+            onChange={(e) => handleSortChange(e.target.value)}
+            className="bg-transparent text-white text-sm focus:outline-none cursor-pointer font-medium"
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value} className="bg-dark-300 text-white">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Results */}
