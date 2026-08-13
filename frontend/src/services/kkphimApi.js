@@ -261,35 +261,35 @@ export const kkphimApi = {
         return kkphimApi.getAllAnime(page, limit);
       }
 
-      // Use the first category's endpoint with specified limit (capped at API max 64)
-      const fetchLimit = Math.min(Math.max(limit, 1), 64);
-      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, {
-        params: { page, limit: fetchLimit },
-      });
+      const firstSlug = categoryObjects[0].slug;
+      const otherSlugs = categoryObjects.slice(1).map(c => c.slug);
       
-      let items = response.data?.data?.items || [];
-      
-      // Filter for anime only (type 'hoathinh')
-      items = items.filter(item => item.type === 'hoathinh');
-      
-      // If multiple categories selected, ensure the item contains ALL of them
-      if (categoryObjects.length > 1) {
-        const categoryNames = categoryObjects.map(c => c.name);
-        
-        items = items.filter(item => {
-          const itemCategories = item.category?.map(c => c.name) || [];
-          return categoryNames.every(cat => itemCategories.includes(cat));
-        });
+      const params = { page, limit };
+      if (otherSlugs.length > 0) {
+        params.category = otherSlugs.join(',');
       }
+
+      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, { params });
       
+      const rawData = response.data?.data;
+      let items = rawData?.items || [];
+      const pagination = rawData?.params?.pagination || {};
+
       return {
-        data: items.slice(0, limit).map(transformAnime),
-        pagination: response.data?.data?.params?.pagination || {},
-        totalFiltered: items.length,
+        data: items.map(transformAnime),
+        pagination: {
+          totalItems: pagination.totalItems || items.length,
+          totalItemsPerPage: pagination.totalItemsPerPage || limit,
+          currentPage: pagination.currentPage || page,
+          totalPages: pagination.totalPages || 1,
+        },
       };
     } catch (error) {
       console.error('Error filtering anime:', error);
-      return { data: [], pagination: {}, totalFiltered: 0 };
+      return {
+        data: [],
+        pagination: { totalItems: 0, totalItemsPerPage: limit, currentPage: page, totalPages: 1 },
+      };
     }
   },
 
@@ -307,35 +307,34 @@ export const kkphimApi = {
       }
 
       const firstSlug = categoryObjects[0].slug;
+      const otherSlugs = categoryObjects.slice(1).map(c => c.slug);
       
-      // Use the first category's endpoint and fetch up to 64 items (API maximum)
-      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, {
-        params: { page, limit: 64 },
-      });
-      
-      let items = response.data?.data?.items || [];
-      
-      // Filter for movies only (type 'single' or 'series'), excluding anime and tvshows
-      items = items.filter(item => item.type === 'single' || item.type === 'series');
-      
-      // If multiple categories selected, ensure the item contains ALL of them
-      if (categoryObjects.length > 1) {
-        const categoryNames = categoryObjects.map(c => c.name);
-        
-        items = items.filter(item => {
-          const itemCategories = item.category?.map(c => c.name) || [];
-          return categoryNames.every(cat => itemCategories.includes(cat));
-        });
+      const params = { page, limit };
+      if (otherSlugs.length > 0) {
+        params.category = otherSlugs.join(',');
       }
+
+      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, { params });
       
+      const rawData = response.data?.data;
+      let items = rawData?.items || [];
+      const pagination = rawData?.params?.pagination || {};
+
       return {
-        data: items.slice(0, limit).map(transformAnime),
-        pagination: response.data?.data?.params?.pagination || {},
-        totalFiltered: items.length,
+        data: items.map(transformAnime),
+        pagination: {
+          totalItems: pagination.totalItems || items.length,
+          totalItemsPerPage: pagination.totalItemsPerPage || limit,
+          currentPage: pagination.currentPage || page,
+          totalPages: pagination.totalPages || 1,
+        },
       };
     } catch (error) {
       console.error('Error filtering movies:', error);
-      return { data: [], pagination: {}, totalFiltered: 0 };
+      return {
+        data: [],
+        pagination: { totalItems: 0, totalItemsPerPage: limit, currentPage: page, totalPages: 1 },
+      };
     }
   },
 };
