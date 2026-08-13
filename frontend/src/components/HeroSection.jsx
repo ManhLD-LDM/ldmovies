@@ -17,7 +17,7 @@ function HeroSection({ movies = [] }) {
 
   if (!movies || movies.length === 0) {
     return (
-      <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] bg-dark-200 animate-pulse">
+      <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] bg-dark-200 animate-pulse -mt-16">
         <div className="absolute bottom-0 left-0 right-0 p-8 pb-16 md:pb-20">
           <div className="max-w-7xl mx-auto">
             <div className="h-12 bg-dark-300 rounded w-1/2 mb-4"></div>
@@ -30,7 +30,7 @@ function HeroSection({ movies = [] }) {
   }
 
   return (
-    <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] overflow-hidden bg-bg-900">
+    <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] overflow-hidden bg-bg-900 -mt-16">
       {movies.map((movie, index) => {
         const isActive = index === currentIndex;
         const isNext = index === (currentIndex + 1) % movies.length;
