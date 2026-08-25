@@ -4,8 +4,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
 import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function MoviesPage() {
+  useDocumentTitle('Danh Sách Phim Mới & Hot Nhất');
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 

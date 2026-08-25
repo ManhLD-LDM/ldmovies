@@ -91,13 +91,13 @@ function MovieCard({ movie, contentType = 'anime' }) {
                 </h3>
                 <div className="flex items-center gap-2 mt-1.5">
                     {year && (
-                        <span className="text-gray-500 text-sm">{year}</span>
+                        <span className="text-gray-400 text-sm">{year}</span>
                     )}
                     {time && year && (
-                        <span className="text-gray-600">•</span>
+                        <span className="text-gray-500">•</span>
                     )}
                     {time && (
-                        <span className="text-gray-500 text-sm">{time}</span>
+                        <span className="text-gray-400 text-sm">{time}</span>
                     )}
                 </div>
             </div>

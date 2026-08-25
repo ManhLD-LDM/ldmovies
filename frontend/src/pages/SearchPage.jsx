@@ -4,11 +4,14 @@ import { useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
 import { kkphimApi } from '../services/kkphimApi';
 import { sortMovies, SORT_OPTIONS } from '../utils/sortUtils';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
   const sortParam = searchParams.get('sort') || 'newest';
+
+  useDocumentTitle(query ? `Tìm kiếm: "${query}"` : 'Tìm Kiếm Phim & Anime');
   
   const [searchQuery, setSearchQuery] = useState(query);
   const [animes, setAnimes] = useState([]);

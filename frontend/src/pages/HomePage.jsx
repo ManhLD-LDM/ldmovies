@@ -3,8 +3,11 @@ import ContinueWatching from '../components/ContinueWatching';
 import HeroSection from '../components/HeroSection';
 import MovieSection from '../components/MovieSection';
 import { kkphimApi } from '../services/kkphimApi';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function HomePage() {
+    useDocumentTitle('Trang Chủ - Xem Phim & Anime Vietsub Miễn Phí');
+
     const [featuredMovies, setFeaturedMovies] = useState([]);
     const [latestMovies, setLatestMovies] = useState([]);
     const [latestAnime, setLatestAnime] = useState([]);

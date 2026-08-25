@@ -5,6 +5,7 @@ import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
 import { useContentDetail } from '../stores/useContentDetail';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function AnimeDetailPage() {
   const { id } = useParams();
@@ -29,6 +30,11 @@ function AnimeDetailPage() {
     handleFavoriteToggle,
   } = useContentDetail(id);
 
+  useDocumentTitle(
+    anime?.name ? `Anime ${anime.name}` : 'Chi Tiết Anime',
+    anime?.content ? anime.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
+  );
+
   // Xác định filter path dựa trên URL hiện tại
   const isAnime = location.pathname.startsWith('/anime');
 
@@ -52,10 +58,17 @@ function AnimeDetailPage() {
     <div className="min-h-screen">
       {/* Hero Section with Backdrop */}
       <div className="relative min-h-[75vh] flex items-end pt-28 pb-12 overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center scale-105 animate-slow-zoom"
-          style={{ backgroundImage: `url(${anime.thumb_url || anime.poster || ''})` }}
-        >
+        <div className="absolute inset-0">
+          {(anime.thumb_url || anime.poster) && (
+            <img
+              src={anime.thumb_url || anime.poster}
+              alt=""
+              aria-hidden="true"
+              fetchpriority="high"
+              decoding="async"
+              className="w-full h-full object-cover scale-105 animate-slow-zoom"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/20" />
         </div>
 

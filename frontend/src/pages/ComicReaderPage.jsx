@@ -4,6 +4,7 @@ import { FiChevronLeft, FiChevronRight, FiList, FiHome } from 'react-icons/fi';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useComicHistoryStore from '../stores/comicHistoryStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 const extractChapterId = (chapter) => {
   if (!chapter) return null;
@@ -17,6 +18,12 @@ function ComicReaderPage() {
   const [comicData, setComicData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  useDocumentTitle(
+    chapterData?.item?.comic_name
+      ? `Đọc Truyện ${chapterData.item.comic_name} - Chương ${chapterData.item.chapter_name}`
+      : 'Đang Đọc Truyện'
+  );
   
   // Toolbar state
   const [showToolbar, setShowToolbar] = useState(true);

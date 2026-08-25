@@ -11,11 +11,15 @@ function getAvatarUrl(username) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(username || 'U')}&background=7C3AED&color=fff&size=64&bold=true`;
 }
 
-const SearchSuggestions = ({ loading, suggestions, searchQuery, onSuggestionClick }) => {
+const SearchSuggestions = ({ loading, suggestions, searchQuery, onSuggestionClick, selectedIndex = -1 }) => {
   if (!loading && suggestions.length === 0 && searchQuery.trim().length <= 1) return null;
 
   return (
-    <div className="absolute top-full mt-2 w-full min-w-[280px] bg-dark-200/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50">
+    <div
+      role="listbox"
+      aria-label="Gợi ý tìm kiếm"
+      className="absolute top-full mt-2 w-full min-w-[280px] bg-dark-200/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
+    >
       {loading ? (
         <div className="px-4 py-3 text-gray-400 text-sm flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
@@ -23,33 +27,41 @@ const SearchSuggestions = ({ loading, suggestions, searchQuery, onSuggestionClic
         </div>
       ) : suggestions.length > 0 ? (
         <div className="max-h-80 overflow-y-auto custom-scrollbar">
-          {suggestions.map((item) => (
-            <button
-              key={item.id}
-              onClick={(e) => onSuggestionClick(item, e)}
-              type="button"
-              className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left group border-b border-white/5 last:border-0"
-            >
-              <img
-                src={item.poster || item.thumb_url}
-                alt={item.name}
-                className="w-10 h-14 object-cover rounded shadow"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-white text-sm font-medium truncate group-hover:text-primary-400 transition-colors">{item.name}</div>
-                <div className="text-gray-400 text-xs truncate">{item.origin_name}</div>
-                <div className="text-gray-500 text-[11px] flex items-center gap-1.5 mt-0.5">
-                  {item.year && <span>{item.year}</span>}
-                  {item.quality && (
-                    <span className="px-1.5 py-0.2 bg-primary-600/30 text-primary-300 rounded text-[10px] font-semibold">
-                      {item.quality}
-                    </span>
-                  )}
+          {suggestions.map((item, index) => {
+            const isSelected = index === selectedIndex;
+            return (
+              <button
+                key={item.id}
+                role="option"
+                aria-selected={isSelected}
+                onClick={(e) => onSuggestionClick(item, e)}
+                type="button"
+                className={`w-full px-3 py-2.5 flex items-center gap-3 transition-colors text-left group border-b border-white/5 last:border-0 ${
+                  isSelected ? 'bg-primary-600/30 text-white' : 'hover:bg-white/10'
+                }`}
+              >
+                <img
+                  src={item.poster || item.thumb_url}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-10 h-14 object-cover rounded shadow shrink-0"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium truncate group-hover:text-primary-400 transition-colors">{item.name}</div>
+                  <div className="text-gray-400 text-xs truncate">{item.origin_name}</div>
+                  <div className="text-gray-400 text-[11px] flex items-center gap-1.5 mt-0.5">
+                    {item.year && <span>{item.year}</span>}
+                    {item.quality && (
+                      <span className="px-1.5 py-0.2 bg-primary-600/30 text-primary-300 rounded text-[10px] font-semibold">
+                        {item.quality}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       ) : searchQuery.trim().length > 1 ? (
         <div className="px-4 py-3 text-gray-400 text-sm text-center">Không tìm thấy kết quả</div>
@@ -63,6 +75,7 @@ function Navbar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -80,6 +93,7 @@ function Navbar() {
   useEffect(() => {
     setIsMenuOpen(false);
     setShowSuggestions(false);
+    setSelectedIndex(-1);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -88,6 +102,7 @@ function Navbar() {
       const clickedMobile = mobileSearchRef.current && mobileSearchRef.current.contains(event.target);
       if (!clickedDesktop && !clickedMobile) {
         setShowSuggestions(false);
+        setSelectedIndex(-1);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
@@ -125,6 +140,7 @@ function Navbar() {
             setSuggestions(response.data.slice(0, 5));
           }
           setShowSuggestions(true);
+          setSelectedIndex(-1);
         } catch (error) {
           console.error('Error fetching suggestions:', error);
           setSuggestions([]);
@@ -135,6 +151,7 @@ function Navbar() {
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
+      setSelectedIndex(-1);
     }
 
     return () => {
@@ -146,6 +163,10 @@ function Navbar() {
 
   const handleSearch = (e) => {
     e.preventDefault();
+    if (selectedIndex >= 0 && suggestions[selectedIndex]) {
+      handleSuggestionClick(suggestions[selectedIndex], e);
+      return;
+    }
     if (searchQuery.trim()) {
       const searchUrl = appMode === 'comic'
         ? `/comics?q=${encodeURIComponent(searchQuery.trim())}`
@@ -153,7 +174,27 @@ function Navbar() {
       navigate(searchUrl);
       setSearchQuery('');
       setShowSuggestions(false);
+      setSelectedIndex(-1);
       setIsMenuOpen(false);
+    }
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+    } else if (e.key === 'ArrowDown') {
+      if (suggestions.length > 0) {
+        e.preventDefault();
+        setShowSuggestions(true);
+        setSelectedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (suggestions.length > 0) {
+        e.preventDefault();
+        setShowSuggestions(true);
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      }
     }
   };
 
@@ -166,6 +207,7 @@ function Navbar() {
     navigate(detailUrl);
     setSearchQuery('');
     setShowSuggestions(false);
+    setSelectedIndex(-1);
     setIsMenuOpen(false);
   }, [navigate]);
 
@@ -280,20 +322,19 @@ function Navbar() {
           </div>
 
           {/* Desktop Search Bar */}
-          <form onSubmit={handleSearch} className="hidden lg:flex items-center flex-1 max-w-xs mx-2">
+          <form onSubmit={handleSearch} className="hidden lg:flex items-center flex-1 max-w-xs mx-2" role="search">
             <div className="relative w-full" ref={desktopSearchRef}>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery.trim().length > 1 && setShowSuggestions(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setShowSuggestions(false);
-                }}
-                placeholder="Tìm kiếm phim, anime..."
-                className="w-full px-3.5 py-1.5 pl-9 pr-8 bg-white/5 border border-white/10 rounded-full text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500/60 focus:bg-white/10 transition-all backdrop-blur-sm"
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Tìm kiếm phim, anime, truyện..."
+                aria-label="Tìm kiếm phim, anime hoặc truyện tranh"
+                className="w-full px-3.5 py-1.5 pl-9 pr-9 bg-white/5 border border-white/10 rounded-full text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500/60 focus:bg-white/10 transition-all backdrop-blur-sm"
               />
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} aria-hidden="true" />
 
               {searchQuery && (
                 <button
@@ -301,8 +342,10 @@ function Navbar() {
                   onClick={() => {
                     setSearchQuery('');
                     setShowSuggestions(false);
+                    setSelectedIndex(-1);
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  aria-label="Xóa nội dung tìm kiếm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
                 >
                   <FiX size={14} />
                 </button>
@@ -313,6 +356,7 @@ function Navbar() {
                   loading={loading}
                   suggestions={suggestions}
                   searchQuery={searchQuery}
+                  selectedIndex={selectedIndex}
                   onSuggestionClick={handleSuggestionClick}
                 />
               )}
@@ -325,11 +369,15 @@ function Navbar() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
+                  aria-label="Menu tài khoản người dùng"
+                  aria-haspopup="true"
+                  aria-expanded={showUserMenu}
                   className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 transition-all border border-white/10"
                 >
                   <img
                     src={user?.avatar || getAvatarUrl(user?.username)}
-                    alt={user?.username}
+                    alt=""
+                    aria-hidden="true"
                     className="w-6 h-6 rounded-full object-cover"
                     onError={(e) => { e.target.src = getAvatarUrl(user?.username); }}
                   />
@@ -396,8 +444,9 @@ function Navbar() {
           {/* Mobile Menu Trigger Button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden text-gray-300 hover:text-white p-1"
-            aria-label={isMenuOpen ? 'Đóng menu' : 'Mở menu'}
+            className="md:hidden text-gray-300 hover:text-white p-2 flex items-center justify-center min-w-[44px] min-h-[44px]"
+            aria-label={isMenuOpen ? 'Đóng menu điều hướng' : 'Mở menu điều hướng'}
+            aria-expanded={isMenuOpen}
           >
             {isMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
           </button>
@@ -410,20 +459,19 @@ function Navbar() {
           }`}
         >
           {/* Mobile Search Input */}
-          <form onSubmit={handleSearch} className="mb-3">
+          <form onSubmit={handleSearch} className="mb-3" role="search">
             <div className="relative" ref={mobileSearchRef}>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery.trim().length > 1 && setShowSuggestions(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setShowSuggestions(false);
-                }}
-                placeholder="Tìm kiếm phim, anime..."
-                className="w-full px-4 py-2 pl-9 pr-9 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500"
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Tìm kiếm phim, anime, truyện..."
+                aria-label="Tìm kiếm phim, anime hoặc truyện tranh"
+                className="w-full px-4 py-2 pl-9 pr-10 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500"
               />
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} aria-hidden="true" />
 
               {searchQuery && (
                 <button
@@ -431,8 +479,10 @@ function Navbar() {
                   onClick={() => {
                     setSearchQuery('');
                     setShowSuggestions(false);
+                    setSelectedIndex(-1);
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  aria-label="Xóa nội dung tìm kiếm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
                 >
                   <FiX size={16} />
                 </button>
@@ -443,6 +493,7 @@ function Navbar() {
                   loading={loading}
                   suggestions={suggestions}
                   searchQuery={searchQuery}
+                  selectedIndex={selectedIndex}
                   onSuggestionClick={handleSuggestionClick}
                 />
               )}

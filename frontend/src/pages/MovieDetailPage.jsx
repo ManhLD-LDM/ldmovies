@@ -5,6 +5,7 @@ import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
 import { useContentDetail } from '../stores/useContentDetail';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function MovieDetailPage() {
   const { id } = useParams();
@@ -27,6 +28,11 @@ function MovieDetailPage() {
     closePlayer,
     handleFavoriteToggle,
   } = useContentDetail(id);
+
+  useDocumentTitle(
+    movie?.name ? `Phim ${movie.name}` : 'Chi Tiết Phim',
+    movie?.content ? movie.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
+  );
 
   if (loading) {
     return (
@@ -53,10 +59,17 @@ function MovieDetailPage() {
     <div className="min-h-screen">
       {/* Hero Section with Backdrop */}
       <div className="relative min-h-[75vh] flex items-end pt-28 pb-12 overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center scale-105 animate-slow-zoom"
-          style={{ backgroundImage: `url(${movie.thumb_url || movie.poster || ''})` }}
-        >
+        <div className="absolute inset-0">
+          {(movie.thumb_url || movie.poster) && (
+            <img
+              src={movie.thumb_url || movie.poster}
+              alt=""
+              aria-hidden="true"
+              fetchpriority="high"
+              decoding="async"
+              className="w-full h-full object-cover scale-105 animate-slow-zoom"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/20" />
         </div>
 

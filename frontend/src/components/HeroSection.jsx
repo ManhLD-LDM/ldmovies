@@ -64,12 +64,21 @@ function HeroSection({ movies = [] }) {
               <div className="max-w-7xl mx-auto w-full pointer-events-auto">
                 <div className="max-w-3xl">
                   {/* Tên phim với line-clamp & font scale hợp lý */}
-                  <h1
-                    title={movie.name}
-                    className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white mb-2 leading-tight drop-shadow-lg line-clamp-2 sm:line-clamp-3"
-                  >
-                    {movie.name}
-                  </h1>
+                  {isActive ? (
+                    <h1
+                      title={movie.name}
+                      className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white mb-2 leading-tight drop-shadow-lg line-clamp-2 sm:line-clamp-3"
+                    >
+                      {movie.name}
+                    </h1>
+                  ) : (
+                    <h2
+                      title={movie.name}
+                      className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white mb-2 leading-tight drop-shadow-lg line-clamp-2 sm:line-clamp-3"
+                    >
+                      {movie.name}
+                    </h2>
+                  )}
 
                   {movie.origin_name && movie.origin_name !== movie.name && (
                     <p className="text-sm sm:text-base md:text-lg text-gray-300 mb-4 line-clamp-1">
@@ -130,18 +139,23 @@ function HeroSection({ movies = [] }) {
         );
       })}
 
-      {/* Dots Indicator */}
+      {/* Dots Indicator with accessible touch targets (≥44x44px) */}
       {movies.length > 1 && (
-        <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-center gap-2">
+        <div className="absolute bottom-4 left-0 right-0 z-20 flex justify-center items-center gap-1">
           {movies.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentIndex(index)}
-              className={`h-[2px] transition-all duration-500 ease-out ${
-                index === currentIndex ? 'w-12 bg-white' : 'w-6 bg-white/30 hover:bg-white/50'
-              }`}
-              aria-label={`Slide ${index + 1}`}
-            />
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 group"
+              aria-label={`Chuyển đến phim ${index + 1}`}
+              aria-current={index === currentIndex ? 'true' : 'false'}
+            >
+              <span
+                className={`h-[3px] rounded-full transition-all duration-500 ease-out ${
+                  index === currentIndex ? 'w-10 bg-white shadow-glow-sm' : 'w-5 bg-white/30 group-hover:bg-white/60'
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FiClock, FiSearch, FiFilter, FiChevronLeft, FiChevronRight, FiX, FiBookOpen } from 'react-icons/fi';
 import { comicApi } from '../services/comicApi';
 import { formatTimeAgo } from '../utils/formatTime';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 // Prefetch cache đơn giản - lưu các request đã được prefetch
 const prefetchedSlugs = new Set();
@@ -17,6 +18,8 @@ function prefetchComicDetail(slug) {
 }
 
 function ComicHomePage() {
+  useDocumentTitle('Kho Truyện Tranh Online Hay & Mới Nhất');
+
   const [comics, setComics] = useState([]);
   const [genres, setGenres] = useState([]);
   const [loading, setLoading] = useState(true);

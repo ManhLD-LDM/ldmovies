@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useFavoritesStore from '../stores/favoritesStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function ComicDetailPage() {
   const { slug } = useParams();
@@ -12,6 +13,11 @@ function ComicDetailPage() {
   const [comic, setComic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  useDocumentTitle(
+    comic?.name ? `Truyện ${comic.name}` : 'Chi Tiết Truyện Tranh',
+    comic?.description ? comic.description.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
+  );
   
   const { isAuthenticated } = useAuthStore();
   const { isComicFavorited, addFavoriteComic, removeFavoriteComic } = useFavoritesStore();

@@ -60,12 +60,12 @@ function Footer() {
 
                 <div className="border-t border-dark-300 mt-8 pt-8 flex flex-col md:flex-row justify-between items-center">
                     <p className="text-gray-400 text-sm">
-                        © 2024 LowDetailMovies. Bảo lưu mọi quyền.
+                        © {new Date().getFullYear()} LowDetailMovies & Comics. Bảo lưu mọi quyền.
                     </p>
                     <div className="flex items-center space-x-2 mt-4 md:mt-0 text-gray-400 text-sm">
                         <span>Làm với</span>
-                        <FiHeart className="text-primary-500" />
-                        <span>cho mục đích cá nhân</span>
+                        <FiHeart className="text-primary-500" aria-label="yêu thương" />
+                        <span>cho mục đích giải trí & phi thương mại</span>
                     </div>
                 </div>
             </div>
