@@ -28,20 +28,42 @@ const getWithCache = async (url, config = {}) => {
   return response;
 };
 
+// Chuẩn hóa URL ảnh từ PhimAPI
+export const formatImageUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `${CDN_IMAGE_URL}/${url.replace(/^\/+/, '')}`;
+};
+
+// Tạo slug chuẩn tiếng Việt (hỗ trợ đ/Đ)
+export const toCategorySlug = (str = '') =>
+  str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+
 // Transform data to consistent format
 const transformAnime = (item) => ({
   id: item._id,
   slug: item.slug,
   name: item.name,
   origin_name: item.origin_name,
-  poster: item.poster_url ? (item.poster_url.startsWith('http') ? item.poster_url : `${CDN_IMAGE_URL}/${item.poster_url}`) : null,
-  thumb_url: item.thumb_url ? (item.thumb_url.startsWith('http') ? item.thumb_url : `${CDN_IMAGE_URL}/${item.thumb_url}`) : null,
+  poster: formatImageUrl(item.poster_url),
+  thumb_url: formatImageUrl(item.thumb_url),
   year: item.year,
   quality: item.quality,
   lang: item.lang,
   time: item.time,
   episode_current: item.episode_current,
   category: item.category?.map(c => c.name) || [],
+  categoryList: item.category?.map(c => ({
+    name: c.name,
+    slug: c.slug || toCategorySlug(c.name),
+  })) || [],
   country: item.country?.map(c => c.name) || [],
   type: item.type || 'single', // Store original type from API
 });
@@ -225,9 +247,9 @@ export const kkphimApi = {
         origin_name: movie.origin_name,
         content: movie.content,
         type: movie.type, // Add type field to identify anime/movie/series
-        poster: movie.poster_url || movie.thumb_url || null,
-        thumb_url: movie.thumb_url || movie.poster_url || null,
-        poster_url: movie.poster_url || movie.thumb_url || null,
+        poster: formatImageUrl(movie.poster_url || movie.thumb_url),
+        thumb_url: formatImageUrl(movie.thumb_url || movie.poster_url),
+        poster_url: formatImageUrl(movie.poster_url || movie.thumb_url),
         year: movie.year,
         quality: movie.quality,
         lang: movie.lang,
@@ -235,6 +257,10 @@ export const kkphimApi = {
         episode_current: movie.episode_current,
         episode_total: movie.episode_total,
         category: movie.category?.map(c => c.name) || [],
+        categoryList: movie.category?.map(c => ({
+          name: c.name,
+          slug: c.slug || toCategorySlug(c.name),
+        })) || [],
         country: movie.country?.map(c => c.name) || [],
         actor: movie.actor || [],
         director: movie.director || [],
@@ -261,29 +287,12 @@ export const kkphimApi = {
         return kkphimApi.getAllAnime(page, limit);
       }
 
-      const firstSlug = categoryObjects[0].slug;
-      const otherSlugs = categoryObjects.slice(1).map(c => c.slug);
-      
-      const params = { page, limit };
-      if (otherSlugs.length > 0) {
-        params.category = otherSlugs.join(',');
-      }
-
-      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, { params });
-      
-      const rawData = response.data?.data;
-      let items = rawData?.items || [];
-      const pagination = rawData?.params?.pagination || {};
-
-      return {
-        data: items.map(transformAnime),
-        pagination: {
-          totalItems: pagination.totalItems || items.length,
-          totalItemsPerPage: pagination.totalItemsPerPage || limit,
-          currentPage: pagination.currentPage || page,
-          totalPages: pagination.totalPages || 1,
-        },
-      };
+      return await fetchAndFilterByCategories(
+        categoryObjects,
+        page,
+        limit,
+        (item) => item.type === 'hoathinh'
+      );
     } catch (error) {
       console.error('Error filtering anime:', error);
       return {
@@ -306,29 +315,12 @@ export const kkphimApi = {
         return kkphimApi.getAllMoviesAndSeries(page, limit);
       }
 
-      const firstSlug = categoryObjects[0].slug;
-      const otherSlugs = categoryObjects.slice(1).map(c => c.slug);
-      
-      const params = { page, limit };
-      if (otherSlugs.length > 0) {
-        params.category = otherSlugs.join(',');
-      }
-
-      const response = await getWithCache(`/v1/api/the-loai/${firstSlug}`, { params });
-      
-      const rawData = response.data?.data;
-      let items = rawData?.items || [];
-      const pagination = rawData?.params?.pagination || {};
-
-      return {
-        data: items.map(transformAnime),
-        pagination: {
-          totalItems: pagination.totalItems || items.length,
-          totalItemsPerPage: pagination.totalItemsPerPage || limit,
-          currentPage: pagination.currentPage || page,
-          totalPages: pagination.totalPages || 1,
-        },
-      };
+      return await fetchAndFilterByCategories(
+        categoryObjects,
+        page,
+        limit,
+        (item) => item.type === 'single' || item.type === 'series'
+      );
     } catch (error) {
       console.error('Error filtering movies:', error);
       return {
@@ -338,3 +330,70 @@ export const kkphimApi = {
     }
   },
 };
+
+// Helper chung lấy song song 3 trang từ /v1/api/the-loai/:slug, khử trùng lặp và lọc theo loại + nhiều thể loại
+async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24, typeFilter) {
+  const firstSlug = categoryObjects[0].slug;
+  const startApiPage = (page - 1) * 3 + 1;
+  const pagesToFetch = [startApiPage, startApiPage + 1, startApiPage + 2];
+
+  const responses = await Promise.all(
+    pagesToFetch.map((apiPage) =>
+      getWithCache(`/v1/api/the-loai/${firstSlug}`, {
+        params: { page: apiPage, limit: 64 },
+      }).catch(() => null)
+    )
+  );
+
+  const seenKeys = new Set();
+  const rawItems = [];
+  let firstPagination = null;
+
+  responses.forEach((res) => {
+    const rawData = res?.data?.data;
+    if (!rawData) return;
+    if (!firstPagination && rawData.params?.pagination) {
+      firstPagination = rawData.params.pagination;
+    }
+    const items = rawData.items || [];
+    items.forEach((item) => {
+      const uniqueKey = item._id || item.slug;
+      if (uniqueKey && !seenKeys.has(uniqueKey)) {
+        seenKeys.add(uniqueKey);
+        rawItems.push(item);
+      }
+    });
+  });
+
+  let filteredItems = rawItems.filter(typeFilter);
+
+  if (categoryObjects.length > 1) {
+    filteredItems = filteredItems.filter((item) => {
+      const itemSlugs = (item.category || []).map((c) => c.slug || toCategorySlug(c.name));
+      return categoryObjects.every((cat) => itemSlugs.includes(cat.slug));
+    });
+  }
+
+  const apiTotalPages = firstPagination?.totalPages || 1;
+  const totalPages = Math.max(1, Math.ceil(apiTotalPages / 3));
+  const rawCount = rawItems.length;
+  const totalItems =
+    filteredItems.length === 0
+      ? 0
+      : totalPages === 1
+        ? filteredItems.length
+        : Math.max(
+            filteredItems.length,
+            Math.round((firstPagination?.totalItems || rawCount) * (filteredItems.length / Math.max(rawCount, 1)))
+          );
+
+  return {
+    data: filteredItems.map(transformAnime),
+    pagination: {
+      totalItems,
+      totalItemsPerPage: filteredItems.length || limit,
+      currentPage: page,
+      totalPages,
+    },
+  };
+}

@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
+import { toCategorySlug } from '../services/kkphimApi';
 import { useContentDetail } from '../stores/useContentDetail';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
@@ -35,8 +36,8 @@ function AnimeDetailPage() {
     anime?.content ? anime.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
   );
 
-  // Xác định filter path dựa trên URL hiện tại
-  const isAnime = location.pathname.startsWith('/anime');
+  // Xác định filter path dựa trên loại nội dung hoặc URL hiện tại
+  const isAnime = anime?.type === 'hoathinh' || location.pathname.startsWith('/anime');
 
   if (loading) {
     return (
@@ -113,25 +114,25 @@ function AnimeDetailPage() {
               </div>
 
               {/* Genres */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                {anime.category?.map((genre, idx) => {
-                  const categorySlug = genre.toLowerCase()
-                    .normalize('NFD')
-                    .replace(/[\u0300-\u036f]/g, '')
-                    .replace(/\s+/g, '-')
-                    .replace(/\+/g, '');
-                  const filterPath = isAnime ? '/anime/filter' : '/movies/filter';
-                  return (
-                    <Link
-                      key={idx}
-                      to={`${filterPath}?categories=${categorySlug}`}
-                      className="px-4 py-1.5 glass-effect text-gray-200 rounded-full text-sm font-medium backdrop-blur-md shadow-md hover:bg-white/20 hover:scale-105 transform transition-all duration-300 cursor-pointer"
-                    >
-                      {genre}
-                    </Link>
-                  );
-                })}
-              </div>
+              {((anime.categoryList && anime.categoryList.length > 0) || (anime.category && anime.category.length > 0)) && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {(anime.categoryList && anime.categoryList.length > 0
+                    ? anime.categoryList
+                    : anime.category.map((name) => ({ name, slug: toCategorySlug(name) }))
+                  ).map((cat, idx) => {
+                    const filterPath = isAnime ? '/anime/filter' : '/movies/filter';
+                    return (
+                      <Link
+                        key={cat.slug || idx}
+                        to={`${filterPath}?categories=${cat.slug || toCategorySlug(cat.name)}`}
+                        className="px-4 py-1.5 glass-effect text-gray-200 rounded-full text-sm font-medium backdrop-blur-md shadow-md hover:bg-white/20 hover:scale-105 transform transition-all duration-300 cursor-pointer"
+                      >
+                        {cat.name}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Favorite Button */}
               <div className="mb-6">
@@ -175,37 +176,54 @@ function AnimeDetailPage() {
       </div>
 
       {/* Video Player Section */}
-      {showPlayer && selectedEpisode && (
-        <div ref={playerRef} className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-10">
-          <div className="glass-effect rounded-2xl p-3 md:p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-white">
-                Đang xem: {selectedEpisode.name || 'Tập phim'}
-              </h2>
-              <button
-                onClick={closePlayer}
-                className="p-3 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-all duration-300 transform hover:scale-110"
-              >
-                <FiX size={24} />
-              </button>
+      {showPlayer && selectedEpisode && (() => {
+        const currentEpisodeIndex = episodes.findIndex(
+          (ep) =>
+            (ep.slug && ep.slug === selectedEpisode.slug) ||
+            ep.name === selectedEpisode.name
+        );
+        const hasNextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < episodes.length - 1;
+        const handleNextEpisode = () => {
+          if (hasNextEpisode) {
+            handleEpisodeClick(episodes[currentEpisodeIndex + 1], playerRef);
+          }
+        };
+
+        return (
+          <div ref={playerRef} className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-10">
+            <div className="glass-effect rounded-2xl p-3 md:p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-white">
+                  Đang xem: {selectedEpisode.name || 'Tập phim'}
+                </h2>
+                <button
+                  onClick={closePlayer}
+                  className="p-3 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-all duration-300 transform hover:scale-110"
+                >
+                  <FiX size={24} />
+                </button>
+              </div>
+              <VideoPlayer
+                videoUrl={selectedEpisode.link_m3u8 || selectedEpisode.link_embed}
+                embedUrl={selectedEpisode.link_embed}
+                episodeName={`${anime.name} - ${selectedEpisode.name}`}
+                onClose={closePlayer}
+                initialTime={initialTime}
+                hasNextEpisode={hasNextEpisode}
+                onNextEpisode={handleNextEpisode}
+                historyItem={{
+                  id: anime._id || id,
+                  slug: anime.slug || id,
+                  type: 'anime',
+                  name: anime.name,
+                  episodeName: selectedEpisode.name,
+                  poster: anime.thumb_url || anime.poster_url || anime.poster,
+                }}
+              />
             </div>
-            <VideoPlayer
-              videoUrl={selectedEpisode.link_m3u8 || selectedEpisode.link_embed}
-              episodeName={`${anime.name} - ${selectedEpisode.name}`}
-              onClose={closePlayer}
-              initialTime={initialTime}
-              historyItem={{
-                id: anime._id || id,
-                slug: anime.slug || id,
-                type: 'anime',
-                name: anime.name,
-                episodeName: selectedEpisode.name,
-                poster: anime.thumb_url || anime.poster_url || anime.poster,
-              }}
-            />
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Episodes List - Duy nhất 1 danh sách tập thống nhất */}
       <div className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-6">

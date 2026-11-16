@@ -1,15 +1,19 @@
 import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    FiAlertCircle,
+    FiExternalLink,
     FiMaximize,
     FiMinimize,
     FiPause,
     FiPlay,
+    FiRefreshCw,
     FiRotateCcw,
     FiRotateCw,
+    FiSettings,
+    FiSkipForward,
     FiVolume2,
-    FiVolumeX,
-    FiSettings
+    FiVolumeX
 } from 'react-icons/fi';
 import useWatchHistoryStore from '../stores/watchHistoryStore';
 import useDataSaverStore from '../stores/dataSaverStore';
@@ -106,12 +110,24 @@ function TimeDisplay({ videoRef }) {
 /**
  * Props:
  *  - videoUrl: string          — URL của video (.m3u8 hoặc embed)
+ *  - embedUrl: string          — URL dự phòng dạng embed iframe
  *  - episodeName: string       — Tên tập phim hiển thị
  *  - onClose: () => void       — Callback đóng player
  *  - initialTime: number       — (Deep link) Thời gian bắt đầu tính bằng giây (từ ?t=)
  *  - historyItem: object       — Thông tin để lưu vào lịch sử xem
+ *  - onNextEpisode: () => void — Callback chuyển sang tập tiếp theo
+ *  - hasNextEpisode: boolean   — Có tập tiếp theo hay không
  */
-function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyItem }) {
+function VideoPlayer({
+    videoUrl,
+    embedUrl,
+    episodeName,
+    onClose,
+    initialTime = 0,
+    historyItem,
+    onNextEpisode,
+    hasNextEpisode = false,
+}) {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const hlsRef = useRef(null);
@@ -132,6 +148,8 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
     const interactionStartVisible = useRef(true);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [useFallbackEmbed, setUseFallbackEmbed] = useState(false);
+    const [reloadCount, setReloadCount] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
 
     const [playbackRate, setPlaybackRate] = useState(1);
@@ -245,15 +263,33 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
         };
     }, [historyItemStr, syncHistoryItemToBackend]);
 
-    // Click outside handler for menus
+    // Click outside handler for menus (supports mouse & touch)
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (speedMenuRef.current && !speedMenuRef.current.contains(e.target)) setShowSpeedMenu(false);
             if (qualityMenuRef.current && !qualityMenuRef.current.contains(e.target)) setShowQualityMenu(false);
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
     }, []);
+
+    // Tự động đóng menu Speed / Quality khi thanh điều khiển ẩn đi
+    useEffect(() => {
+        if (!showControls) {
+            setShowSpeedMenu(false);
+            setShowQualityMenu(false);
+        }
+    }, [showControls]);
+
+    // Reset fallback embed & error khi chuyển tập / videoUrl thay đổi
+    useEffect(() => {
+        setUseFallbackEmbed(false);
+        setError(null);
+    }, [videoUrl]);
 
     // ── Detect mobile ──────────────────────────────────────────────────────
     useEffect(() => {
@@ -266,13 +302,14 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
     // ── HLS.js setup ───────────────────────────────────────────────────────
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !videoUrl) return;
+        if (!video || !videoUrl || useFallbackEmbed) return;
 
         // Fix cho Firefox: Xóa trạng thái của thẻ video trước khi nạp tập mới
         video.pause();
         video.removeAttribute('src');
         video.load();
         
+        setError(null);
         setIsLoading(true);
 
         // Cleanup HLS instance cũ nếu có
@@ -377,7 +414,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                 });
                 hls.on(Hls.Events.ERROR, (_, data) => {
                     if (data.fatal) {
-                        setError('Không thể tải video. Vui lòng thử tập khác.');
+                        setError('Không thể tải luồng video chính (HLS). Bạn có thể thử tải lại hoặc chuyển sang Server Dự Phòng.');
                         setIsLoading(false);
                     }
                 });
@@ -417,7 +454,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                 hlsRef.current = null;
             }
         };
-    }, [videoUrl, initialTime, dataSaverEnabled]);
+    }, [videoUrl, initialTime, dataSaverEnabled, reloadCount, useFallbackEmbed]);
 
     // Dừng tải fragment khi tab ẩn / video pause để tiết kiệm data
     useEffect(() => {
@@ -459,6 +496,12 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
             interactionStartVisible.current = prev;
             return true;
         });
+        if (controlsTimeoutRef.current) {
+            clearTimeout(controlsTimeoutRef.current);
+        }
+        controlsTimeoutRef.current = setTimeout(() => {
+            setShowControls(false);
+        }, 3000);
     }, []);
 
     // ── Playback controls ──────────────────────────────────────────────────
@@ -642,10 +685,11 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                     toggleMute();
                     break;
                 case 'Escape':
-                    if (document.fullscreenElement) {
+                    if (showSpeedMenu || showQualityMenu) {
+                        setShowSpeedMenu(false);
+                        setShowQualityMenu(false);
+                    } else if (document.fullscreenElement) {
                         document.exitFullscreen?.();
-                    } else if (onClose) {
-                        onClose();
                     }
                     break;
                 default:
@@ -654,7 +698,7 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [togglePlay, skip, toggleFullscreen, toggleMute, onClose]);
+    }, [togglePlay, skip, toggleFullscreen, toggleMute, showSpeedMenu, showQualityMenu]);
 
     // ── Fullscreen change event ────────────────────────────────────────────
     useEffect(() => {
@@ -718,19 +762,48 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
     // ── Check embed URL ────────────────────────────────────────────────────
     const isM3U8Url = videoUrl?.includes('.m3u8') || videoUrl?.includes('m3u8');
     const isEmbedUrl = !isM3U8Url && (videoUrl?.includes('embed') || videoUrl?.includes('player') || videoUrl?.includes('share'));
+    const shouldUseEmbed = isEmbedUrl || (useFallbackEmbed && Boolean(embedUrl));
+    const activeEmbedSrc = useFallbackEmbed && embedUrl ? embedUrl : videoUrl;
 
-    if (isEmbedUrl) {
+    if (shouldUseEmbed) {
         return (
             <div
                 ref={containerRef}
                 className="relative bg-black rounded-lg overflow-hidden"
                 style={{ aspectRatio: '16/9' }}
             >
-                <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-4 z-40 pointer-events-none">
-                    <span className="text-white font-medium text-sm md:text-base drop-shadow-md">{episodeName}</span>
+                <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-3 sm:p-4 z-40 pointer-events-none flex items-center justify-between gap-3">
+                    <span className="text-white font-medium text-sm md:text-base drop-shadow-md truncate">{episodeName}</span>
+                    <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+                        {useFallbackEmbed && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setUseFallbackEmbed(false);
+                                    setError(null);
+                                    setIsLoading(true);
+                                    setReloadCount((c) => c + 1);
+                                }}
+                                className="px-2.5 py-1 bg-black/70 hover:bg-black/90 text-gray-200 hover:text-white border border-white/20 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+                            >
+                                <FiRefreshCw size={12} />
+                                <span className="hidden sm:inline">Thử lại HLS</span>
+                            </button>
+                        )}
+                        {hasNextEpisode && onNextEpisode && (
+                            <button
+                                type="button"
+                                onClick={onNextEpisode}
+                                className="px-3 py-1 bg-primary-600/90 hover:bg-primary-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-md"
+                            >
+                                <FiSkipForward size={13} />
+                                <span>Tập tiếp</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <iframe
-                    src={videoUrl}
+                    src={activeEmbedSrc}
                     className="w-full h-full"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -811,10 +884,44 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                 </div>
             )}
 
-            {/* Error message */}
+            {/* Error message with retry & embed fallback */}
             {error && (
-                <div className={`absolute inset-0 flex items-center justify-center bg-black/80 ${roundedClass}`}>
-                    <p className="text-red-400 text-center px-4">{error}</p>
+                <div className={`absolute inset-0 z-40 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 ${roundedClass}`}>
+                    <div className="max-w-md w-full bg-dark-200/95 border border-white/10 rounded-2xl p-6 text-center shadow-2xl">
+                        <FiAlertCircle className="mx-auto text-red-400 mb-3" size={40} />
+                        <h3 className="text-white font-bold text-lg mb-2">Lỗi phát video</h3>
+                        <p className="text-gray-300 text-sm mb-6 leading-relaxed">{error}</p>
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setError(null);
+                                    setIsLoading(true);
+                                    setReloadCount((c) => c + 1);
+                                }}
+                                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 border border-white/10"
+                            >
+                                <FiRefreshCw size={16} />
+                                <span>Thử tải lại</span>
+                            </button>
+                            {embedUrl && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setError(null);
+                                        setIsLoading(false);
+                                        setUseFallbackEmbed(true);
+                                    }}
+                                    className="px-4 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary-600/30"
+                                >
+                                    <FiExternalLink size={16} />
+                                    <span>Đổi sang Server Dự Phòng (Embed)</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -914,6 +1021,23 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                                 : <FiPlay size={isMobile ? 20 : 24} />}
                         </button>
 
+                        {/* Next Episode */}
+                        {hasNextEpisode && onNextEpisode && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNextEpisode();
+                                }}
+                                className="text-white hover:text-primary-400 transition-colors flex items-center gap-1.5 px-2 py-1.5 md:px-2.5 md:py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10"
+                                title="Chuyển sang tập tiếp theo"
+                                aria-label="Tập tiếp"
+                            >
+                                <FiSkipForward size={isMobile ? 16 : 18} />
+                                <span className="text-[11px] md:text-xs font-semibold whitespace-nowrap">Tập tiếp</span>
+                            </button>
+                        )}
+
                         {/* Skip backward */}
                         <button
                             onClick={() => skip(-5)}
@@ -976,7 +1100,10 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                         {/* Speed Control */}
                         <div className="relative" ref={speedMenuRef}>
                             <button
-                                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                                onClick={() => {
+                                    setShowSpeedMenu((prev) => !prev);
+                                    setShowQualityMenu(false);
+                                }}
                                 className="text-white hover:text-primary-500 transition-colors text-[10px] md:text-xs font-semibold px-2 py-1 bg-black/40 rounded hover:bg-white/20"
                                 title="Tốc độ phát"
                             >
@@ -1003,7 +1130,10 @@ function VideoPlayer({ videoUrl, episodeName, onClose, initialTime = 0, historyI
                         {levels.length > 0 && (
                             <div className="relative" ref={qualityMenuRef}>
                                 <button
-                                    onClick={() => setShowQualityMenu(!showQualityMenu)}
+                                    onClick={() => {
+                                        setShowQualityMenu((prev) => !prev);
+                                        setShowSpeedMenu(false);
+                                    }}
                                     className="text-white hover:text-primary-500 transition-colors text-[10px] md:text-xs font-semibold px-2 py-1 bg-black/40 rounded hover:bg-white/20 flex items-center gap-1"
                                     title="Chất lượng video"
                                 >

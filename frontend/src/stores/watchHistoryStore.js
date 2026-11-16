@@ -59,14 +59,26 @@ const useWatchHistoryStore = create(
                 }
             },
 
-            // Remove from history
-            removeFromHistory: (slug, episodeName) => {
+            // Remove from history (local + server when logged in)
+            removeFromHistory: async (slug, episodeName) => {
                 const { watchHistory } = get();
                 set({
                     watchHistory: watchHistory.filter(
                         (h) => !(h.slug === slug && h.episodeName === episodeName)
                     ),
                 });
+
+                try {
+                    const token = localStorage.getItem('token');
+                    if (token && slug && episodeName) {
+                        await historyApi.deleteItem(
+                            encodeURIComponent(slug),
+                            encodeURIComponent(episodeName)
+                        );
+                    }
+                } catch (error) {
+                    console.error('Lỗi khi xóa lịch sử khỏi server:', error);
+                }
             },
 
             // Clear all history

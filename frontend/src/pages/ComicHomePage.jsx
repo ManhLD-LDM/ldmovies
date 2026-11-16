@@ -31,8 +31,13 @@ function ComicHomePage() {
   // Lấy query từ URL
   const queryParams = new URLSearchParams(location.search);
   const q = queryParams.get('q') || '';
+  const initialGenre = queryParams.get('genre') || '';
 
-  const [activeFilter, setActiveFilter] = useState({ type: q ? 'search' : 'latest', value: q || null });
+  const [activeFilter, setActiveFilter] = useState(() => {
+    if (q) return { type: 'search', value: q };
+    if (initialGenre) return { type: 'genre', value: initialGenre };
+    return { type: 'latest', value: null };
+  });
   const [searchQuery, setSearchQuery] = useState(q);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -98,7 +103,9 @@ function ComicHomePage() {
         if (activeFilter.type !== 'search') {
           const pagination = data.data.pagination || data.data.params?.pagination;
           if (pagination) {
-            setTotalPages(Math.ceil(pagination.totalItems / pagination.totalItemsPerPage));
+            setTotalPages(
+              Math.max(1, Math.ceil(pagination.totalItems / (pagination.totalItemsPerPage || 24)))
+            );
           } else {
             setTotalPages(1);
           }
@@ -123,20 +130,37 @@ function ComicHomePage() {
     fetchComics(page);
   }, [activeFilter, page, fetchComics]);
 
-  // Lắng nghe sự thay đổi của query parameters (khi user tìm kiếm từ Navbar)
+  // Lắng nghe sự thay đổi của query parameters (khi user tìm kiếm, bấm thể loại hoặc chọn Mới Cập Nhật)
   useEffect(() => {
-    const currentQ = new URLSearchParams(location.search).get('q') || '';
-    if (currentQ !== searchQuery) {
+    const params = new URLSearchParams(location.search);
+    const currentQ = params.get('q') || '';
+    const currentGenre = params.get('genre') || '';
+
+    if (currentQ) {
       setSearchQuery(currentQ);
       setPage(1);
-      if (currentQ) {
-        setActiveFilter({ type: 'search', value: currentQ });
-      } else {
-        // Nếu xóa q khỏi URL, quay lại latest (nếu không phải đang lọc thể loại)
-        setActiveFilter(prev => prev.type === 'search' ? { type: 'latest', value: null } : prev);
-      }
+      setActiveFilter((prev) =>
+        prev.type === 'search' && prev.value === currentQ
+          ? prev
+          : { type: 'search', value: currentQ }
+      );
+    } else if (currentGenre) {
+      setSearchQuery('');
+      setPage(1);
+      setActiveFilter((prev) =>
+        prev.type === 'genre' && prev.value === currentGenre
+          ? prev
+          : { type: 'genre', value: currentGenre }
+      );
+    } else {
+      setSearchQuery('');
+      setPage(1);
+      setActiveFilter((prev) =>
+        prev.type === 'latest' && prev.value === null
+          ? prev
+          : { type: 'latest', value: null }
+      );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
   const handleSearch = (e) => {
@@ -156,7 +180,7 @@ function ComicHomePage() {
     setPage(1);
     setActiveFilter({ type: 'genre', value: slug });
     setShowFilterDropdown(false);
-    navigate('/comics'); // Xoá query string
+    navigate(`/comics?genre=${encodeURIComponent(slug)}`);
   };
 
   const clearFilter = () => {
@@ -171,7 +195,7 @@ function ComicHomePage() {
   const getFilterTitle = () => {
     if (activeFilter.type === 'latest') return 'Cập Nhật Mới Nhất';
     if (activeFilter.type === 'search') return `Kết quả cho "${activeFilter.value}"`;
-    return genres.find(g => g.slug === activeFilter.value)?.name || '';
+    return genres.find(g => g.slug === activeFilter.value)?.name || 'Theo Thể Loại';
   };
 
   const renderPagination = () => {

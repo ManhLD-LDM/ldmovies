@@ -2,6 +2,8 @@ import { FiClock, FiPlay, FiX } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import useWatchHistoryStore from '../stores/watchHistoryStore';
 
+const FALLBACK_POSTER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect fill='%231E1E28' width='320' height='180'/%3E%3Ctext x='160' y='100' font-family='Arial' font-size='40' fill='%234B4B6A' text-anchor='middle'%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E`;
+
 function ContinueWatching() {
     const { getRecentItems, removeFromHistory } = useWatchHistoryStore();
     const items = getRecentItems(10);
@@ -47,16 +49,20 @@ function ContinueWatching() {
                 {items.map((item) => (
                     <div key={`${item.slug}-${item.episodeName}`} className="group relative">
                         <Link
-                            to={`/${item.type === 'movie' ? 'movies' : 'anime'}/${item.slug}`}
+                            to={`/${item.type === 'movie' ? 'movies' : 'anime'}/${item.slug}?ep=${encodeURIComponent(item.episodeName || '')}`}
                             className="block"
                         >
                             {/* Thumbnail */}
                             <div className="relative aspect-video rounded-xl overflow-hidden bg-dark-200 shadow-card hover-card cursor-pointer">
                                 <img
-                                    src={item.poster}
+                                    src={item.poster || FALLBACK_POSTER}
                                     alt={item.name}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
+                                    onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.src = FALLBACK_POSTER;
+                                    }}
                                 />
 
                                 {/* Overlay */}
@@ -101,7 +107,7 @@ function ContinueWatching() {
                                 e.stopPropagation();
                                 removeFromHistory(item.slug, item.episodeName);
                             }}
-                            className="absolute top-2 right-2 p-1.5 glass-effect rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-red-500/50"
+                            className="absolute top-2 right-2 p-1.5 glass-effect rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300 hover:bg-red-500/50"
                             aria-label="Xóa khỏi lịch sử"
                         >
                             <FiX size={14} />

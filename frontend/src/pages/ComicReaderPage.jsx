@@ -4,6 +4,7 @@ import { FiChevronLeft, FiChevronRight, FiList, FiHome } from 'react-icons/fi';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useComicHistoryStore from '../stores/comicHistoryStore';
+import useDataSaverStore from '../stores/dataSaverStore';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
 const extractChapterId = (chapter) => {
@@ -36,6 +37,7 @@ function ComicReaderPage() {
 
   const { isAuthenticated } = useAuthStore();
   const { syncComicHistory } = useComicHistoryStore();
+  const dataSaver = useDataSaverStore((state) => state.enabled);
   const lastSyncedRef = useRef(null);
 
   useEffect(() => {
@@ -156,7 +158,6 @@ function ComicReaderPage() {
   }
 
   const API_BASE = import.meta.env.VITE_API_URL || '/api';
-  const dataSaver = localStorage.getItem('ldmovies_datasaver') === '1';
   const targetWidth = dataSaver ? 540 : Math.min(Math.round((window.innerWidth || 800) * (window.devicePixelRatio || 1)), 900);
   const targetQuality = dataSaver ? 45 : 62;
 
@@ -174,7 +175,7 @@ function ComicReaderPage() {
           
           <div className="flex flex-col items-center px-4 max-w-[200px] sm:max-w-[300px]">
             <h1 className="text-[13px] font-medium text-white truncate w-full text-center tracking-wide">{chapterData.item.comic_name}</h1>
-            <p className="text-[11px] text-zinc-500">Ch. {chapterData.item.chapter_name}</p>
+            <p className="text-[11px] text-zinc-500">Chương {chapterData.item.chapter_name}</p>
           </div>
 
           <Link to="/comics" className="w-10 h-10 flex justify-center items-center rounded-full hover:bg-white/10 transition-colors text-zinc-400 hover:text-white">

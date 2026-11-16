@@ -114,7 +114,7 @@ function FavoriteGrid({ items, tab, onRemove, navigate }) {
             <button
               onClick={() => onRemove(itemId)}
               aria-label={`Xóa "${item.title}" khỏi yêu thích`}
-              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 border border-white/20"
+              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white p-1.5 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-red-600 border border-white/20"
             >
               <FiX size={14} />
             </button>

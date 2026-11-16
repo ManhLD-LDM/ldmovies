@@ -18,7 +18,8 @@ function MovieCard({ movie, contentType = 'anime' }) {
         time,
     } = movie;
 
-    const linkPath = contentType === 'movie' ? `/movies/${slug || id}` : `/anime/${slug || id}`;
+    const isAnimeItem = movie.type ? movie.type === 'hoathinh' : contentType === 'anime';
+    const linkPath = isAnimeItem ? `/anime/${slug || id}` : `/movies/${slug || id}`;
 
     return (
         <Link

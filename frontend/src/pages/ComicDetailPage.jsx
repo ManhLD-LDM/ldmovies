@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiClock, FiUser, FiInfo, FiList, FiHeart } from 'react-icons/fi';
+import { FiArrowDown, FiArrowUp, FiBookOpen, FiHeart, FiSearch, FiX } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useFavoritesStore from '../stores/favoritesStore';
 import useDocumentTitle from '../utils/useDocumentTitle';
+
+const getChapterIdOrName = (chap) =>
+  chap?.chapter_api_data?.split('/').pop() || chap?.chapter_name;
+
+const STATUS_LABELS = {
+  ongoing: 'Đang tiến hành',
+  completed: 'Hoàn thành',
+  coming_soon: 'Sắp ra mắt',
+};
 
 function ComicDetailPage() {
   const { slug } = useParams();
@@ -13,19 +22,33 @@ function ComicDetailPage() {
   const [comic, setComic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [chapterSearch, setChapterSearch] = useState('');
+  const [chapterSortOrder, setChapterSortOrder] = useState('asc'); // 'asc' | 'desc'
 
   useDocumentTitle(
     comic?.name ? `Truyện ${comic.name}` : 'Chi Tiết Truyện Tranh',
     comic?.description ? comic.description.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
   );
-  
+
   const { isAuthenticated } = useAuthStore();
-  const { isComicFavorited, addFavoriteComic, removeFavoriteComic } = useFavoritesStore();
+  const {
+    isComicFavorited,
+    fetchFavoriteComics,
+    addFavoriteComic,
+    removeFavoriteComic,
+  } = useFavoritesStore();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFavoriteComics();
+    }
+  }, [isAuthenticated, fetchFavoriteComics]);
 
   useEffect(() => {
     const fetchComicDetails = async () => {
       try {
         setLoading(true);
+        setChapterSearch('');
         const data = await comicApi.getComicDetails(slug);
         if (data.status === 'success') {
           setComic(data.data);
@@ -39,7 +62,9 @@ function ComicDetailPage() {
     if (slug) fetchComicDetails();
   }, [slug]);
 
-  const isFavorited = comic ? isComicFavorited(comic._id || comic.slug) : false;
+  const isFavorited = comic
+    ? isComicFavorited(comic.slug) || isComicFavorited(comic._id)
+    : false;
 
   const handleToggleFavorite = async () => {
     if (!isAuthenticated) {
@@ -48,10 +73,15 @@ function ComicDetailPage() {
       return;
     }
 
-    const comicId = comic._id || comic.slug;
+    const comicId = comic.slug || comic._id;
 
     if (isFavorited) {
-      const result = await removeFavoriteComic(comicId);
+      const existingFavoriteId = isComicFavorited(comic.slug)
+        ? comic.slug
+        : isComicFavorited(comic._id)
+          ? comic._id
+          : comicId;
+      const result = await removeFavoriteComic(existingFavoriteId);
       if (result.success) {
         toast.success('Đã bỏ theo dõi truyện');
       } else {
@@ -61,7 +91,7 @@ function ComicDetailPage() {
       const result = await addFavoriteComic({
         comicId,
         title: comic.name,
-        poster: comic.thumb_url
+        poster: comic.thumb_url,
       });
       if (result.success) {
         toast.success('Đã lưu truyện vào tủ sách');
@@ -70,6 +100,18 @@ function ComicDetailPage() {
       }
     }
   };
+
+  const filteredChapters = useMemo(() => {
+    const chapters = comic?.chapters || [];
+    const ordered = chapterSortOrder === 'desc' ? [...chapters].reverse() : chapters;
+    const query = chapterSearch.trim().toLowerCase();
+    if (!query) return ordered;
+    return ordered.filter(
+      (chap) =>
+        String(chap.chapter_name || '').toLowerCase().includes(query) ||
+        String(chap.chapter_title || '').toLowerCase().includes(query)
+    );
+  }, [comic?.chapters, chapterSortOrder, chapterSearch]);
 
   if (loading) {
     return (
@@ -115,18 +157,24 @@ function ComicDetailPage() {
     );
   }
 
+  const chapters = comic.chapters || [];
+  const firstChapter = chapters[0];
+  const latestChapter = chapters[chapters.length - 1];
+  const authorText = comic.author?.filter(Boolean).join(', ') || 'Đang cập nhật';
+  const statusText = STATUS_LABELS[comic.status] || comic.status || 'Đang cập nhật';
+
   return (
     <div className="pt-24 px-4 sm:px-8 lg:px-12 max-w-[1200px] mx-auto min-h-screen text-white pb-24 font-sans">
-      
+
       {/* Editorial Split Header */}
       <div className="flex flex-col md:flex-row gap-12 md:gap-16 mb-24">
-        
+
         {/* Left: Poster */}
         <div className="w-full md:w-[320px] flex-shrink-0">
           <div className="aspect-[2/3] w-full bg-zinc-900 rounded-lg overflow-hidden relative">
-            <img 
-              src={comic.thumb_url} 
-              alt={comic.name} 
+            <img
+              src={comic.thumb_url}
+              alt={comic.name}
               className="w-full h-full object-cover"
             />
             {/* Subtle inner border for premium feel */}
@@ -139,7 +187,7 @@ function ComicDetailPage() {
           <div className="flex items-center gap-3 mb-4">
             <span className="w-8 h-[1px] bg-white/40"></span>
             <span className="text-zinc-400 text-xs uppercase tracking-[0.2em] font-medium">
-              {comic.status === 'ongoing' ? 'Ongoing' : comic.status}
+              {statusText}
             </span>
           </div>
 
@@ -152,85 +200,173 @@ function ComicDetailPage() {
 
           <div className="flex flex-col gap-4 mb-8 text-sm">
             <div className="flex items-start gap-3">
-              <span className="text-zinc-500 w-24">Author</span>
-              <span className="text-zinc-200">{comic.author?.join(', ') || 'Unknown'}</span>
+              <span className="text-zinc-500 w-24 shrink-0">Tác giả</span>
+              <span className="text-zinc-200">{authorText}</span>
             </div>
             <div className="flex items-start gap-3">
-              <span className="text-zinc-500 w-24">Genres</span>
+              <span className="text-zinc-500 w-24 shrink-0">Thể loại</span>
               <div className="flex flex-wrap gap-2">
-                {comic.category?.map(cat => (
-                  <span key={cat.id} className="text-zinc-200">
-                    {cat.name}{cat !== comic.category[comic.category.length - 1] && ', '}
-                  </span>
-                ))}
+                {comic.category && comic.category.length > 0 ? (
+                  comic.category.map((cat, idx) => (
+                    <Link
+                      key={cat.id || cat.slug || idx}
+                      to={`/comics?genre=${encodeURIComponent(cat.slug)}`}
+                      className="px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-white/10 hover:border-white/30 rounded-full text-xs text-zinc-200 hover:text-white transition-colors"
+                    >
+                      {cat.name}
+                    </Link>
+                  ))
+                ) : (
+                  <span className="text-zinc-400">Đang cập nhật</span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="mb-12 max-w-2xl">
-            <div 
+            <div
               className="text-zinc-400 leading-relaxed font-light text-base md:text-lg"
               dangerouslySetInnerHTML={{ __html: comic.content }}
             ></div>
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap gap-4 mt-auto">
-            {comic.chapters && comic.chapters.length > 0 && (
-              <Link 
-                to={`/comics/${comic.slug}/chapter/${comic.chapters[comic.chapters.length - 1].chapter_api_data?.split('/').pop() || comic.chapters[comic.chapters.length - 1].chapter_name}`}
-                className="px-8 py-4 bg-white text-black rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide"
-              >
-                Start Reading
-              </Link>
+          <div className="flex flex-wrap gap-3 sm:gap-4 mt-auto">
+            {chapters.length > 0 && (
+              <>
+                <Link
+                  to={`/comics/${comic.slug}/chapter/${getChapterIdOrName(firstChapter)}`}
+                  className="px-7 py-4 bg-white text-black rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide"
+                >
+                  <FiBookOpen size={16} />
+                  <span>Đọc Từ Đầu</span>
+                </Link>
+                <Link
+                  to={`/comics/${comic.slug}/chapter/${getChapterIdOrName(latestChapter)}`}
+                  className="px-7 py-4 bg-zinc-900 hover:bg-zinc-800 text-white border border-white/20 rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide"
+                >
+                  <span>Đọc Mới Nhất</span>
+                </Link>
+              </>
             )}
-            
+
             <button
+              type="button"
               onClick={handleToggleFavorite}
-              className={`px-8 py-4 rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide border ${
-                isFavorited 
-                  ? 'bg-transparent text-white border-white/20' 
+              className={`px-7 py-4 rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide border ${
+                isFavorited
+                  ? 'bg-transparent text-white border-white/20'
                   : 'bg-zinc-900 text-zinc-300 border-white/10 hover:border-white/30'
               }`}
             >
-              <FiHeart className={isFavorited ? 'fill-white text-white' : ''} /> 
-              {isFavorited ? 'Saved' : 'Save'}
+              <FiHeart className={isFavorited ? 'fill-white text-white' : ''} />
+              {isFavorited ? 'Đã lưu' : 'Lưu truyện'}
             </button>
           </div>
         </div>
       </div>
 
       {/* Chapters Section */}
-      <div className="border-t border-white/10 pt-16">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-medium tracking-tight">Chapters</h2>
-          <span className="text-sm text-zinc-500 font-mono">{comic.chapters?.length || 0} total</span>
-        </div>
-        
-        {comic.chapters && comic.chapters.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {comic.chapters.map((chap, index) => {
-              const chapIdOrName = chap.chapter_api_data?.split('/').pop() || chap.chapter_name;
-              
-              return (
-                <Link
-                  key={index}
-                  to={`/comics/${comic.slug}/chapter/${chapIdOrName}`}
-                  className="group flex items-center justify-between bg-[#0A0A0A] hover:bg-zinc-900 border border-white/5 hover:border-white/20 rounded-lg p-5 transition-colors"
-                >
-                  <span className="font-medium text-zinc-400 group-hover:text-white transition-colors text-sm">
-                    Chapter {chap.chapter_name}
-                  </span>
-                  <span className="text-zinc-600 group-hover:text-white transition-colors opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transform duration-300">
-                    →
-                  </span>
-                </Link>
-              );
-            })}
+      <div className="border-t border-white/10 pt-12 sm:pt-16">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-medium tracking-tight">Danh sách chương</h2>
+            <span className="text-sm text-zinc-500 font-mono">{chapters.length} chương</span>
           </div>
+
+          {chapters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Quick Chapter Search */}
+              <div className="relative w-full sm:w-52">
+                <FiSearch
+                  size={14}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={chapterSearch}
+                  onChange={(e) => setChapterSearch(e.target.value)}
+                  placeholder="Tìm số chương..."
+                  aria-label="Tìm số chương"
+                  className="w-full pl-9 pr-8 py-2 bg-[#0A0A0A] border border-white/10 rounded-full text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors"
+                />
+                {chapterSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setChapterSearch('')}
+                    aria-label="Xóa tìm kiếm chương"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1"
+                  >
+                    <FiX size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Reverse Sort Toggle */}
+              <button
+                type="button"
+                onClick={() =>
+                  setChapterSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+                }
+                className="px-4 py-2 bg-[#0A0A0A] hover:bg-zinc-900 border border-white/10 hover:border-white/30 rounded-full text-xs sm:text-sm text-zinc-300 hover:text-white flex items-center gap-1.5 transition-colors whitespace-nowrap"
+              >
+                {chapterSortOrder === 'desc' ? (
+                  <>
+                    <FiArrowDown size={14} />
+                    <span>Mới nhất</span>
+                  </>
+                ) : (
+                  <>
+                    <FiArrowUp size={14} />
+                    <span>Cũ nhất</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {chapters.length > 0 ? (
+          filteredChapters.length > 0 ? (
+            <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredChapters.map((chap, index) => {
+                  const chapIdOrName = getChapterIdOrName(chap);
+
+                  return (
+                    <Link
+                      key={chapIdOrName || index}
+                      to={`/comics/${comic.slug}/chapter/${chapIdOrName}`}
+                      className="group flex items-center justify-between bg-[#0A0A0A] hover:bg-zinc-900 border border-white/5 hover:border-white/20 rounded-lg p-5 transition-colors"
+                    >
+                      <span className="font-medium text-zinc-400 group-hover:text-white transition-colors text-sm truncate pr-2">
+                        Chương {chap.chapter_name}
+                      </span>
+                      <span className="text-zinc-600 group-hover:text-white transition-colors opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transform duration-300 shrink-0">
+                        →
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="py-12 flex flex-col items-center justify-center border border-white/5 border-dashed rounded-xl gap-3">
+              <p className="text-zinc-500 text-sm">
+                Không tìm thấy chương nào khớp với &quot;{chapterSearch}&quot;
+              </p>
+              <button
+                type="button"
+                onClick={() => setChapterSearch('')}
+                className="text-xs text-white underline hover:text-zinc-300"
+              >
+                Hiện tất cả chương
+              </button>
+            </div>
+          )
         ) : (
           <div className="py-20 flex justify-center border border-white/5 border-dashed rounded-xl">
-            <p className="text-zinc-500">No chapters available yet.</p>
+            <p className="text-zinc-500">Hiện chưa có chương nào.</p>
           </div>
         )}
       </div>

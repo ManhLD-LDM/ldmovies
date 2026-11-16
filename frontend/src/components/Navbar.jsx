@@ -114,6 +114,8 @@ function Navbar() {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
     }
@@ -124,6 +126,7 @@ function Navbar() {
         try {
           if (appMode === 'comic') {
             const response = await comicApi.searchComics(searchQuery.trim());
+            if (isCancelled) return;
             const mappedComics = (response.data?.items || []).slice(0, 5).map(item => ({
               id: item._id,
               slug: item.slug,
@@ -137,24 +140,31 @@ function Navbar() {
             setSuggestions(mappedComics);
           } else {
             const response = await kkphimApi.searchAnime(searchQuery.trim());
+            if (isCancelled) return;
             setSuggestions(response.data.slice(0, 5));
           }
           setShowSuggestions(true);
           setSelectedIndex(-1);
         } catch (error) {
-          console.error('Error fetching suggestions:', error);
-          setSuggestions([]);
+          if (!isCancelled) {
+            console.error('Error fetching suggestions:', error);
+            setSuggestions([]);
+          }
         } finally {
-          setLoading(false);
+          if (!isCancelled) {
+            setLoading(false);
+          }
         }
       }, 300);
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
       setSelectedIndex(-1);
+      setLoading(false);
     }
 
     return () => {
+      isCancelled = true;
       if (debounceTimeout.current) {
         clearTimeout(debounceTimeout.current);
       }
@@ -203,7 +213,11 @@ function Navbar() {
       e.preventDefault();
       e.stopPropagation();
     }
-    const detailUrl = item.isComic ? `/comics/${item.slug}` : `/anime/${item.slug}`;
+    const detailUrl = item.isComic
+      ? `/comics/${item.slug}`
+      : item.type === 'hoathinh'
+        ? `/anime/${item.slug}`
+        : `/movies/${item.slug}`;
     navigate(detailUrl);
     setSearchQuery('');
     setShowSuggestions(false);
@@ -217,7 +231,10 @@ function Navbar() {
     navigate('/');
   };
 
-  const isDetailPage = location.pathname.includes('/anime/') || location.pathname.includes('/movie/') || location.pathname.includes('/watch/');
+  const isDetailPage =
+    (/^\/(movies|anime)\/[^/]+$/.test(location.pathname) &&
+      !location.pathname.endsWith('/filter')) ||
+    location.pathname.includes('/watch/');
   const positionClass = isDetailPage ? "absolute top-0 left-0 right-0 z-40" : "fixed top-0 left-0 right-0 z-50";
 
   return (
@@ -272,15 +289,19 @@ function Navbar() {
                 <Link
                   to="/comics"
                   className={`transition-colors py-1 ${
-                    location.pathname === '/comics' ? 'text-teal-400 font-semibold' : 'text-gray-300 hover:text-white'
+                    location.pathname === '/comics' && !location.search.includes('sort=latest')
+                      ? 'text-teal-400 font-semibold'
+                      : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Trang Chủ
                 </Link>
                 <Link
-                  to="/comics/latest"
+                  to="/comics?sort=latest"
                   className={`transition-colors py-1 ${
-                    location.pathname === '/comics/latest' ? 'text-teal-400 font-semibold' : 'text-gray-300 hover:text-white'
+                    location.pathname === '/comics' && location.search.includes('sort=latest')
+                      ? 'text-teal-400 font-semibold'
+                      : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Mới Cập Nhật
@@ -567,7 +588,7 @@ function Navbar() {
                   Trang Chủ Truyện
                 </Link>
                 <Link
-                  to="/comics/latest"
+                  to="/comics?sort=latest"
                   onClick={() => setIsMenuOpen(false)}
                   className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
                 >
