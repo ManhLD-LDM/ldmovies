@@ -49,7 +49,7 @@ function ContinueWatching() {
                 {items.map((item) => (
                     <div key={`${item.slug}-${item.episodeName}`} className="group relative">
                         <Link
-                            to={`/${item.type === 'movie' ? 'movies' : 'anime'}/${item.slug}?ep=${encodeURIComponent(item.episodeName || '')}`}
+                            to={`/${(item.type === 'anime' || item.type === 'hoathinh') ? 'anime' : 'movies'}/${item.slug}?ep=${encodeURIComponent(item.episodeName || '')}`}
                             className="block"
                         >
                             {/* Thumbnail */}

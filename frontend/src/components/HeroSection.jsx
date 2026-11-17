@@ -36,7 +36,7 @@ function HeroSection({ movies = [] }) {
         const isNext = index === (currentIndex + 1) % movies.length;
         if (!isActive && !isNext) return null; // Tránh render nhiều DOM node & nạp ảnh cùng lúc
 
-        const detailPath = movie.type === 'hoathinh' || !movie.type ? `/anime/${movie.slug}` : `/movies/${movie.slug}`;
+        const detailPath = movie.type === 'hoathinh' ? `/anime/${movie.slug}` : `/movies/${movie.slug}`;
 
         return (
           <div

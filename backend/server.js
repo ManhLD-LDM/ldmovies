@@ -142,8 +142,17 @@ if (fs.existsSync(distIndexHtml)) {
       index: false,
       etag: true,
       setHeaders: (res, filePath) => {
-        // Asset có hash (ví dụ: assets/index-a1b2c3d4.js) được cache 1 năm
-        if (/\.[0-9a-f]{8,}\.(js|css|woff2|png|jpg|svg|webp)$/i.test(filePath)) {
+        const fileName = path.basename(filePath);
+        // Service Worker, manifest và HTML tuyệt đối không cache để client luôn nhận bản cập nhật mới nhất
+        if (
+          fileName === 'sw.js' ||
+          fileName === 'registerSW.js' ||
+          fileName === 'manifest.webmanifest' ||
+          fileName.endsWith('.html')
+        ) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (/\.[0-9a-f]{8,}\.(js|css|woff2|png|jpg|svg|webp)$/i.test(filePath)) {
+          // Asset có hash (ví dụ: assets/index-a1b2c3d4.js) được cache 1 năm
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         } else {
           res.setHeader('Cache-Control', 'public, max-age=3600');

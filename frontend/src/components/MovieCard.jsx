@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 // Poster fallback dạng SVG data URI - không cần network request
 const FALLBACK_POSTER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450' viewBox='0 0 300 450'%3E%3Crect fill='%231E1E28' width='300' height='450'/%3E%3Ctext x='150' y='230' font-family='Arial' font-size='64' fill='%234B4B6A' text-anchor='middle'%3E🎬%3C/text%3E%3C/svg%3E`;
 
-function MovieCard({ movie, contentType = 'anime' }) {
+function MovieCard({ movie, contentType = 'movie' }) {
     const {
         id,
         slug,

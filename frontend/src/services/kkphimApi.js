@@ -106,7 +106,7 @@ export const kkphimApi = {
     });
     const data = response.data?.data?.items;
     return {
-      data: data?.map(transformAnime) || [],
+      data: data?.map(item => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [],
       pagination: response.data?.data?.params?.pagination || {},
     };
   },
@@ -145,7 +145,7 @@ export const kkphimApi = {
     });
     const data = response.data?.data;
     return {
-      data: data?.items?.map(transformAnime) || [],
+      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [],
       pagination: data?.params?.pagination || {},
     };
   },
@@ -157,7 +157,7 @@ export const kkphimApi = {
     });
     const data = response.data?.data;
     return {
-      data: data?.items?.map(transformAnime) || [],
+      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'single' })) || [],
       pagination: data?.params?.pagination || {},
     };
   },
@@ -169,7 +169,7 @@ export const kkphimApi = {
     });
     const data = response.data?.data;
     return {
-      data: data?.items?.map(transformAnime) || [],
+      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'series' })) || [],
       pagination: data?.params?.pagination || {},
     };
   },

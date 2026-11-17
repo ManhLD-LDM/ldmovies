@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FiCalendar, FiClock, FiHeart, FiPlay, FiStar, FiX } from 'react-icons/fi';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
@@ -10,6 +10,8 @@ import useDocumentTitle from '../utils/useDocumentTitle';
 
 function MovieDetailPage() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const playerRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -30,12 +32,23 @@ function MovieDetailPage() {
     handleFavoriteToggle,
   } = useContentDetail(id);
 
+  const isTrueAnime = movie?.type === 'hoathinh';
+
+  // Nếu thực tế là anime (hoathinh), chuyển hướng đúng sang /anime/:id
+  useEffect(() => {
+    if (!loading && movie?.type === 'hoathinh') {
+      navigate(`/anime/${id}${location.search}`, { replace: true });
+    }
+  }, [loading, movie, id, location.search, navigate]);
+
   useDocumentTitle(
-    movie?.name ? `Phim ${movie.name}` : 'Chi Tiết Phim',
+    movie?.name
+      ? `${isTrueAnime ? 'Anime' : 'Phim'} ${movie.name}`
+      : undefined,
     movie?.content ? movie.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
   );
 
-  if (loading) {
+  if (loading || movie?.type === 'hoathinh') {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="animate-pulse">
@@ -220,7 +233,7 @@ function MovieDetailPage() {
                 historyItem={{
                   id: movie._id || id,
                   slug: movie.slug || id,
-                  type: 'movie',
+                  type: isTrueAnime ? 'anime' : 'movie',
                   name: movie.name,
                   episodeName: selectedEpisode.name,
                   poster: movie.thumb_url || movie.poster_url || movie.poster,

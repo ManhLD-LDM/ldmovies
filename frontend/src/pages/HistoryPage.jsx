@@ -174,7 +174,7 @@ function HistoryPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {sortedWatchHistory.map((item) => {
-                    const baseRoute = item.type === 'movie' ? '/movies' : '/anime';
+                    const baseRoute = (item.type === 'anime' || item.type === 'hoathinh') ? '/anime' : '/movies';
                     const detailUrl = `${baseRoute}/${item.slug}`;
                     const resumeUrl = `${detailUrl}?ep=${encodeURIComponent(item.episodeName || '')}`;
                     const progressPercent = getProgressPercent(item);

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FiCalendar, FiClock, FiHeart, FiStar, FiTv, FiX } from 'react-icons/fi';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import EpisodeList from '../components/EpisodeList';
 import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
@@ -11,6 +11,7 @@ import useDocumentTitle from '../utils/useDocumentTitle';
 function AnimeDetailPage() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const playerRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -31,15 +32,25 @@ function AnimeDetailPage() {
     handleFavoriteToggle,
   } = useContentDetail(id);
 
+  // Chỉ xem là Anime khi type từ API là 'hoathinh'
+  const isTrueAnime = anime?.type === 'hoathinh';
+  const isAnime = anime?.type ? isTrueAnime : location.pathname.startsWith('/anime');
+
+  // Chuyển hướng sang /movies/:id nếu nội dung thực tế không phải anime (vd: link cũ / lịch sử cũ)
+  useEffect(() => {
+    if (!loading && anime?.type && anime.type !== 'hoathinh') {
+      navigate(`/movies/${id}${location.search}`, { replace: true });
+    }
+  }, [loading, anime, id, location.search, navigate]);
+
   useDocumentTitle(
-    anime?.name ? `Anime ${anime.name}` : 'Chi Tiết Anime',
+    anime?.name
+      ? `${isTrueAnime ? 'Anime' : 'Phim'} ${anime.name}`
+      : undefined,
     anime?.content ? anime.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
   );
 
-  // Xác định filter path dựa trên loại nội dung hoặc URL hiện tại
-  const isAnime = anime?.type === 'hoathinh' || location.pathname.startsWith('/anime');
-
-  if (loading) {
+  if (loading || (anime?.type && anime.type !== 'hoathinh')) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary-500" />
@@ -214,7 +225,7 @@ function AnimeDetailPage() {
                 historyItem={{
                   id: anime._id || id,
                   slug: anime.slug || id,
-                  type: 'anime',
+                  type: isTrueAnime ? 'anime' : 'movie',
                   name: anime.name,
                   episodeName: selectedEpisode.name,
                   poster: anime.thumb_url || anime.poster_url || anime.poster,
