@@ -17,6 +17,7 @@ import {
 } from 'react-icons/fi';
 import useWatchHistoryStore from '../stores/watchHistoryStore';
 import useDataSaverStore from '../stores/dataSaverStore';
+import { createAdFreePlaylistLoader } from '../utils/hlsAdFilter';
 
 // ─── ProgressBar Component ──────────────────────────────────────────────────
 // Tách riêng thành component con để tránh re-render toàn bộ VideoPlayer
@@ -325,10 +326,11 @@ function VideoPlayer({
                 const savedQuality = localStorage.getItem('ldmovies_quality');
                 const isAuto = !savedQuality || savedQuality === 'Auto' || savedQuality === '-1';
 
-                // Chrome, Firefox, Edge: dùng hls.js với Data Saver tối ưu
+                // Chrome, Firefox, Edge: dùng hls.js với Data Saver tối ưu + lọc quảng cáo SSAI .m3u8
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
+                    pLoader: createAdFreePlaylistLoader(),
                     maxBufferLength: dataSaverEnabled ? 15 : 30, // 15s forward buffer khi bật Data Saver
                     maxMaxBufferLength: dataSaverEnabled ? 30 : 60,
                     startLevel: (dataSaverEnabled || !isAuto) ? 0 : -1, // Force start level 0 (thấp nhất) khi bật Data Saver
