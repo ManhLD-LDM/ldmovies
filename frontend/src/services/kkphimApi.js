@@ -47,21 +47,38 @@ export const toCategorySlug = (str = '') =>
     .trim()
     .replace(/\s+/g, '-');
 
+// Chuẩn hóa slug/tiêu đề phần 1 để khử trùng lặp giữa KKPhim và NguonC (giữ nguyên Phần 2, 3...)
+const normalizeBaseSlug = (slug = '') =>
+  String(slug || '')
+    .replace(/^nc--/, '')
+    .replace(/-(?:phan|season|mua)-1$/i, '');
+
+const normalizeBaseTitle = (str = '') =>
+  toCategorySlug(str).replace(/-(?:phan|season|mua)-1$/i, '');
+
 // Gộp và khử trùng lặp danh sách phim từ KKPhim (ưu tiên) và NguonC
 function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
   const seenSlugs = new Set();
   const seenTitles = new Set();
+  const seenOrigins = new Set();
   const merged = [];
 
   const addItem = (item) => {
     if (!item) return;
-    const rawSlug = String(item.rawSlug || item.slug || '').replace(/^nc--/, '');
-    const titleKey = `${toCategorySlug(item.name || '')}|${item.year || ''}`;
-    if (rawSlug && seenSlugs.has(rawSlug)) return;
-    if (item.name && seenTitles.has(titleKey)) return;
+    const baseSlug = normalizeBaseSlug(item.rawSlug || item.slug || '');
+    const baseTitle = normalizeBaseTitle(item.name || '');
+    const baseOrigin = normalizeBaseTitle(item.origin_name || '');
+    const year = item.year || '';
+    const titleKey = baseTitle ? `${baseTitle}|${year}` : '';
+    const originKey = baseOrigin ? `${baseOrigin}|${year}` : '';
 
-    if (rawSlug) seenSlugs.add(rawSlug);
-    if (item.name) seenTitles.add(titleKey);
+    if (baseSlug && seenSlugs.has(baseSlug)) return;
+    if (titleKey && seenTitles.has(titleKey)) return;
+    if (originKey && seenOrigins.has(originKey)) return;
+
+    if (baseSlug) seenSlugs.add(baseSlug);
+    if (titleKey) seenTitles.add(titleKey);
+    if (originKey) seenOrigins.add(originKey);
     merged.push(item);
   };
 

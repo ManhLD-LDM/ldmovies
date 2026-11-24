@@ -858,6 +858,7 @@ function VideoPlayer({
                 <iframe
                     src={activeEmbedSrc}
                     className="w-full h-full"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                     allowFullScreen
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     frameBorder="0"
