@@ -40,6 +40,7 @@ const useComicHistoryStore = create((set) => ({
     }
   },
 
+  clearComicHistory: () => set({ comicHistory: [], error: null }),
   clearError: () => set({ error: null }),
 }));
 

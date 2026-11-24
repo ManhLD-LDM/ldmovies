@@ -1,8 +1,20 @@
 import { create } from 'zustand';
 import { authApi, userApi } from '../services/api';
+import useComicHistoryStore from './comicHistoryStore';
+import useFavoritesStore from './favoritesStore';
+
+function safeParseUser() {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+}
 
 const useAuthStore = create((set) => ({
-  user: JSON.parse(localStorage.getItem('user')) || null,
+  user: safeParseUser(),
   token: localStorage.getItem('token') || null,
   isAuthenticated: !!localStorage.getItem('token'),
   isLoading: false,
@@ -99,10 +111,19 @@ const useAuthStore = create((set) => ({
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    useFavoritesStore.getState().clearFavorites();
+    useComicHistoryStore.getState().clearComicHistory();
     set({ user: null, token: null, isAuthenticated: false });
   },
 
   clearError: () => set({ error: null }),
 }));
+
+if (typeof window !== 'undefined' && !window.__authUnauthorizedListenerAttached) {
+  window.__authUnauthorizedListenerAttached = true;
+  window.addEventListener('auth:unauthorized', () => {
+    useAuthStore.getState().logout();
+  });
+}
 
 export default useAuthStore;

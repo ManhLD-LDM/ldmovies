@@ -1,12 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FiEye, FiEyeOff, FiLock, FiMail } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import useAuthStore from '../stores/authStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function LoginPage() {
+  useDocumentTitle('Đăng Nhập');
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, isLoading, error, clearError, isAuthenticated } = useAuthStore();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
   
   const [formData, setFormData] = useState({
     email: '',

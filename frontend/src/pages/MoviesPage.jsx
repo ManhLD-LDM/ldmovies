@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiFilter } from 'react-icons/fi';
+import { FiFilter, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
 import Pagination from '../components/Pagination';
@@ -19,12 +19,16 @@ function MoviesPage() {
   const [movies, setMovies] = useState([]);
   const [selectedType, setSelectedType] = useState(typeParam); // 'all', 'phim-le', 'phim-bo'
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(activePage);
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
+    let isCancelled = false;
     const fetchMovies = async () => {
       setLoading(true);
+      setError(false);
       try {
         let response;
         
@@ -35,19 +39,29 @@ function MoviesPage() {
         } else if (typeParam === 'phim-bo') {
           response = await kkphimApi.getAllTVSeries(activePage, 24);
         }
+
+        if (isCancelled) return;
         
         setMovies(response?.data || []);
         setTotalPages(response?.pagination?.totalPages || 1);
         setCurrentPage(response?.pagination?.currentPage || activePage);
         setSelectedType(typeParam);
-      } catch (error) {
-        console.error('Error fetching movies:', error);
+      } catch (err) {
+        if (!isCancelled) {
+          console.error('Error fetching movies:', err);
+          setError(true);
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
     fetchMovies();
-  }, [typeParam, activePage]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [typeParam, activePage, retryCount]);
 
   const handleTypeChange = (type) => {
     setSelectedType(type);
@@ -62,16 +76,17 @@ function MoviesPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Page Title */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Phim</h1>
             <p className="text-gray-400">Tổng hợp phim lẻ và phim bộ Vietsub mới nhất</p>
           </div>
           <button
+            type="button"
             onClick={() => navigate('/movies/filter')}
-            className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium shadow-lg shadow-primary-600/30"
+            className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium shadow-lg shadow-primary-600/30"
           >
-            <FiFilter size={20} />
+            <FiFilter size={18} />
             <span>Bộ Lọc</span>
           </button>
         </div>
@@ -113,11 +128,25 @@ function MoviesPage() {
         </div>
       </div>
 
-      {/* Movies Grid */}
-      <MovieGrid movies={movies} loading={loading} contentType="movie" />
+      {/* Movies Grid / Error State */}
+      {error ? (
+        <div className="text-center py-16 bg-dark-200/60 rounded-2xl border border-white/10">
+          <p className="text-gray-300 text-lg mb-4">Không thể tải danh sách phim</p>
+          <button
+            type="button"
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors"
+          >
+            <FiRefreshCw size={16} />
+            <span>Thử lại</span>
+          </button>
+        </div>
+      ) : (
+        <MovieGrid movies={movies} loading={loading} contentType="movie" />
+      )}
 
       {/* Pagination */}
-      {!loading && movies.length > 0 && (
+      {!loading && !error && movies.length > 0 && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

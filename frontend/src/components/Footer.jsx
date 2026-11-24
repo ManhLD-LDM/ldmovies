@@ -1,14 +1,17 @@
 import { FiHeart } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
+import useAppStore from '../stores/appStore';
 
 function Footer() {
+    const { setAppMode } = useAppStore();
+
     return (
         <footer className="bg-dark-100 border-t border-dark-300 py-8 mt-auto">
             <div className="max-w-7xl mx-auto px-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     {/* Logo & Mô tả */}
                     <div className="col-span-1 md:col-span-2">
-                        <Link to="/" className="flex items-center space-x-2 mb-4">
+                        <Link to="/" onClick={() => setAppMode('movie')} className="flex items-center space-x-2 mb-4">
                             <span className="text-2xl font-black bg-gradient-to-r from-violet-400 via-purple-500 to-violet-600 bg-clip-text text-transparent">LowDetailMovies</span>
                         </Link>
                         <p className="text-gray-400 text-sm">
@@ -22,22 +25,22 @@ function Footer() {
                         <h3 className="text-white font-semibold mb-4">Liên Kết Nhanh</h3>
                         <ul className="space-y-2">
                             <li>
-                                <Link to="/" className="text-gray-400 hover:text-white text-sm transition-colors">
+                                <Link to="/" onClick={() => setAppMode('movie')} className="text-gray-400 hover:text-white text-sm transition-colors">
                                     Trang Chủ
                                 </Link>
                             </li>
                             <li>
-                                <Link to="/anime" className="text-gray-400 hover:text-white text-sm transition-colors">
+                                <Link to="/anime" onClick={() => setAppMode('movie')} className="text-gray-400 hover:text-white text-sm transition-colors">
                                     Anime
                                 </Link>
                             </li>
                             <li>
-                                <Link to="/movies" className="text-gray-400 hover:text-white text-sm transition-colors">
+                                <Link to="/movies" onClick={() => setAppMode('movie')} className="text-gray-400 hover:text-white text-sm transition-colors">
                                     Phim
                                 </Link>
                             </li>
                             <li>
-                                <Link to="/comics" className="text-gray-400 hover:text-white text-sm transition-colors">
+                                <Link to="/comics" onClick={() => setAppMode('comic')} className="text-gray-400 hover:text-white text-sm transition-colors">
                                     Truyện Tranh
                                 </Link>
                             </li>

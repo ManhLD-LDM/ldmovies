@@ -20,35 +20,66 @@ import useDataSaverStore from '../stores/dataSaverStore';
 import { createAdFreePlaylistLoader } from '../utils/hlsAdFilter';
 
 // ─── ProgressBar Component ──────────────────────────────────────────────────
-// Tách riêng thành component con để tránh re-render toàn bộ VideoPlayer
-// khi currentTime thay đổi liên tục mỗi 250ms.
-function ProgressBar({ videoRef, duration }) {
+// Tách riêng thành component con để tránh re-render toàn bộ VideoPlayer.
+// Chỉ chạy requestAnimationFrame khi video đang phát (isPlaying = true) để tiết kiệm CPU/pin.
+function ProgressBar({ videoRef, duration, isPlaying }) {
     const inputRef = useRef(null);
     const rafRef = useRef(null);
 
+    const updateBar = useCallback(() => {
+        const video = videoRef.current;
+        const input = inputRef.current;
+        if (!video || !input) return;
+
+        const dur = video.duration > 0 ? video.duration : duration;
+        if (dur > 0) {
+            const pct = Math.min(100, Math.max(0, (video.currentTime / dur) * 100));
+            let bufferedPct = pct;
+            if (video.buffered && video.buffered.length > 0) {
+                for (let i = 0; i < video.buffered.length; i++) {
+                    if (video.buffered.start(i) <= video.currentTime && video.buffered.end(i) >= video.currentTime) {
+                        bufferedPct = Math.min(100, Math.max(pct, (video.buffered.end(i) / dur) * 100));
+                        break;
+                    }
+                }
+            }
+            input.value = video.currentTime;
+            input.style.background = `linear-gradient(to right, #8B5CF6 0%, #8B5CF6 ${pct}%, rgba(255,255,255,0.3) ${pct}%, rgba(255,255,255,0.3) ${bufferedPct}%, #4b5563 ${bufferedPct}%, #4b5563 100%)`;
+        }
+    }, [videoRef, duration]);
+
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !inputRef.current) return;
+        if (!video) return;
 
-        // Dùng requestAnimationFrame để update DOM trực tiếp, không qua React state
-        const tick = () => {
-            if (inputRef.current && video.duration > 0) {
-                const pct = (video.currentTime / video.duration) * 100;
-                inputRef.current.value = video.currentTime;
-                inputRef.current.style.background =
-                    `linear-gradient(to right, #dc2626 ${pct}%, #4b5563 ${pct}%)`;
-            }
+        updateBar();
+        video.addEventListener('timeupdate', updateBar);
+        video.addEventListener('seeked', updateBar);
+        video.addEventListener('loadedmetadata', updateBar);
+        video.addEventListener('progress', updateBar);
+
+        if (isPlaying) {
+            const tick = () => {
+                updateBar();
+                rafRef.current = requestAnimationFrame(tick);
+            };
             rafRef.current = requestAnimationFrame(tick);
-        };
+        }
 
-        rafRef.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafRef.current);
-    }, [videoRef, duration]);
+        return () => {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            video.removeEventListener('timeupdate', updateBar);
+            video.removeEventListener('seeked', updateBar);
+            video.removeEventListener('loadedmetadata', updateBar);
+            video.removeEventListener('progress', updateBar);
+        };
+    }, [videoRef, isPlaying, updateBar]);
 
     const handleSeek = (e) => {
         const newTime = parseFloat(e.target.value);
         if (videoRef.current) {
             videoRef.current.currentTime = newTime;
+            updateBar();
         }
     };
 
@@ -60,9 +91,10 @@ function ProgressBar({ videoRef, duration }) {
             max={duration || 100}
             defaultValue={0}
             onChange={handleSeek}
-            className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+            aria-label="Tiến độ video"
+            className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
             style={{
-                background: 'linear-gradient(to right, #dc2626 0%, #4b5563 0%)',
+                background: 'linear-gradient(to right, #8B5CF6 0%, #4b5563 0%)',
             }}
         />
     );
@@ -169,6 +201,7 @@ function VideoPlayer({
     const { addToHistory, updateProgress, syncHistoryItemToBackend } = useWatchHistoryStore();
     const [showResumePrompt, setShowResumePrompt] = useState(false);
     const [savedProgress, setSavedProgress] = useState(0);
+    const [autoNextCountdown, setAutoNextCountdown] = useState(null);
     const autoResumeRef = useRef(0);
 
     const historyItemStr = JSON.stringify(historyItem);
@@ -286,11 +319,28 @@ function VideoPlayer({
         }
     }, [showControls]);
 
-    // Reset fallback embed & error khi chuyển tập / videoUrl thay đổi
+    // Reset fallback embed, error, resume prompt & auto-next khi chuyển tập / videoUrl thay đổi
     useEffect(() => {
         setUseFallbackEmbed(false);
         setError(null);
+        setShowResumePrompt(false);
+        setAutoNextCountdown(null);
+        autoResumeRef.current = 0;
     }, [videoUrl]);
+
+    // Đếm ngược tự động chuyển tập tiếp theo khi kết thúc tập
+    useEffect(() => {
+        if (autoNextCountdown === null) return;
+        if (autoNextCountdown <= 0) {
+            setAutoNextCountdown(null);
+            onNextEpisode?.();
+            return;
+        }
+        const timer = setTimeout(() => {
+            setAutoNextCountdown((prev) => (prev !== null ? prev - 1 : null));
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [autoNextCountdown, onNextEpisode]);
 
     // ── Detect mobile ──────────────────────────────────────────────────────
     useEffect(() => {
@@ -624,13 +674,14 @@ function VideoPlayer({
         }
     };
 
-    // Áp dụng volume khởi tạo khi load video
+    // Áp dụng volume và playbackRate khởi tạo khi load video
     useEffect(() => {
         if (videoRef.current) {
             videoRef.current.volume = volume;
             videoRef.current.muted = isMuted;
+            videoRef.current.playbackRate = playbackRate;
         }
-    }, [videoUrl]);
+    }, [videoUrl, playbackRate]);
 
     // ── Keyboard shortcuts ─────────────────────────────────────────────────
     useEffect(() => {
@@ -860,6 +911,9 @@ function VideoPlayer({
                 className={`w-full h-full object-contain cursor-pointer ${roundedClass}`}
                 onClick={handleVideoClick}
                 onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                        videoRef.current.playbackRate = playbackRate;
+                    }
                     setDuration(videoRef.current?.duration || 0);
                     setIsLoading(false);
                 }}
@@ -867,8 +921,15 @@ function VideoPlayer({
                 onPlaying={() => {
                     setIsLoading(false);
                     setIsPlaying(true);
+                    setAutoNextCountdown(null);
                 }}
                 onPause={() => setIsPlaying(false)}
+                onEnded={() => {
+                    setIsPlaying(false);
+                    if (hasNextEpisode && onNextEpisode) {
+                        setAutoNextCountdown(3);
+                    }
+                }}
                 onError={() => {
                     // Chỉ trigger error khi không dùng HLS (HLS tự xử lý lỗi)
                     if (!hlsRef.current) {
@@ -971,8 +1032,39 @@ function VideoPlayer({
                 </div>
             )}
 
+            {/* Auto Next Episode Countdown Overlay */}
+            {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && (
+                <div className={`absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 ${roundedClass}`}>
+                    <div className="bg-dark-200 border border-white/10 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+                        <p className="text-gray-300 text-sm mb-2">Đã hết tập hiện tại</p>
+                        <h3 className="text-lg font-bold text-white mb-5">
+                            Chuyển sang tập tiếp theo sau <span className="text-primary-400">{autoNextCountdown}s</span>
+                        </h3>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setAutoNextCountdown(null)}
+                                className="flex-1 py-2.5 px-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setAutoNextCountdown(null);
+                                    onNextEpisode();
+                                }}
+                                className="flex-1 py-2.5 px-4 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-semibold transition-colors"
+                            >
+                                Xem ngay
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Play/Pause overlay */}
-            {!isPlaying && !isLoading && !error && !showResumePrompt && (
+            {!isPlaying && !isLoading && !error && !showResumePrompt && autoNextCountdown === null && (
                 <div
                     className="absolute inset-0 flex items-center justify-center cursor-pointer"
                     onClick={togglePlay}
@@ -1007,16 +1099,16 @@ function VideoPlayer({
             >
                 {/* Progress bar — Component con tách riêng, không re-render VideoPlayer */}
                 <div className="mb-3">
-                    <ProgressBar videoRef={videoRef} duration={duration} />
+                    <ProgressBar videoRef={videoRef} duration={duration} isPlaying={isPlaying} />
                 </div>
 
                 {/* Control buttons */}
-                <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-2">
-                    <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+                <div className="flex flex-nowrap items-center justify-between gap-1.5 sm:gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4 min-w-0">
                         {/* Play/Pause */}
                         <button
                             onClick={togglePlay}
-                            className="text-white hover:text-primary-500 transition-colors p-2 md:p-0"
+                            className="text-white hover:text-primary-500 transition-colors p-1.5 md:p-0 shrink-0"
                         >
                             {isPlaying
                                 ? <FiPause size={isMobile ? 20 : 24} />
@@ -1031,12 +1123,12 @@ function VideoPlayer({
                                     e.stopPropagation();
                                     onNextEpisode();
                                 }}
-                                className="text-white hover:text-primary-400 transition-colors flex items-center gap-1.5 px-2 py-1.5 md:px-2.5 md:py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10"
+                                className="text-white hover:text-primary-400 transition-colors flex items-center gap-1.5 px-2 py-1.5 md:px-2.5 md:py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 shrink-0"
                                 title="Chuyển sang tập tiếp theo"
                                 aria-label="Tập tiếp"
                             >
                                 <FiSkipForward size={isMobile ? 16 : 18} />
-                                <span className="text-[11px] md:text-xs font-semibold whitespace-nowrap">Tập tiếp</span>
+                                <span className="hidden sm:inline text-xs font-semibold whitespace-nowrap">Tập tiếp</span>
                             </button>
                         )}
 
@@ -1186,14 +1278,14 @@ function VideoPlayer({
                     appearance: none;
                     width: 14px;
                     height: 14px;
-                    background: #dc2626;
+                    background: #8B5CF6;
                     border-radius: 50%;
                     cursor: pointer;
                 }
                 .slider::-moz-range-thumb {
                     width: 14px;
                     height: 14px;
-                    background: #dc2626;
+                    background: #8B5CF6;
                     border-radius: 50%;
                     cursor: pointer;
                     border: none;

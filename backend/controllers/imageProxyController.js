@@ -9,7 +9,17 @@ const ALLOWED_HOSTS = new Set([
   'img.otruyenapi.com',
   'phimimg.com',
   'otruyenapi.com',
+  'doctruyen3qhub.club',
+  'anhvip.xyz',
 ]);
+
+const isAllowedHost = (hostname = '') => {
+  if (ALLOWED_HOSTS.has(hostname)) return true;
+  return (
+    hostname.endsWith('.anhvip.xyz') ||
+    hostname.endsWith('.doctruyen3qhub.club')
+  );
+};
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'img');
 
@@ -33,7 +43,7 @@ export const proxyImage = async (req, res) => {
     }
 
     // SSRF Protection: Whitelist trusted image domains only
-    if (!ALLOWED_HOSTS.has(target.hostname)) {
+    if (!isAllowedHost(target.hostname)) {
       return res.status(403).json({ message: 'Domain nguồn không được phép' });
     }
 
@@ -57,13 +67,24 @@ export const proxyImage = async (req, res) => {
       // Cache miss -> fetch from upstream
     }
 
+    const upstreamHeaders = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    };
+    if (
+      target.hostname === 'anhvip.xyz' ||
+      target.hostname.endsWith('.anhvip.xyz') ||
+      target.hostname === 'doctruyen3qhub.club' ||
+      target.hostname.endsWith('.doctruyen3qhub.club')
+    ) {
+      upstreamHeaders.Referer = 'https://doctruyen3qhub.club/';
+    }
+
     const upstream = await axios.get(target.href, {
       responseType: 'arraybuffer',
       timeout: 15000,
       maxContentLength: 15 * 1024 * 1024, // 15MB limit
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) LDMovies/1.0',
-      },
+      headers: upstreamHeaders,
     });
 
     const pipeline = sharp(upstream.data).resize({ width, withoutEnlargement: true });

@@ -1,8 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiClock, FiSearch, FiFilter, FiChevronLeft, FiChevronRight, FiX, FiBookOpen } from 'react-icons/fi';
+import { useEffect, useState, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { FiClock, FiSearch, FiFilter, FiChevronLeft, FiChevronRight, FiX, FiBookOpen, FiRefreshCw } from 'react-icons/fi';
 import { comicApi } from '../services/comicApi';
 import { formatTimeAgo } from '../utils/formatTime';
+import { FALLBACK_POSTER } from '../utils/textUtils';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
 // Prefetch cache đơn giản - lưu các request đã được prefetch
@@ -24,171 +25,169 @@ function ComicHomePage() {
   const [genres, setGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  const location = useLocation();
-  const navigate = useNavigate();
-  
-  // Lấy query từ URL
-  const queryParams = new URLSearchParams(location.search);
-  const q = queryParams.get('q') || '';
-  const initialGenre = queryParams.get('genre') || '';
+  const [retryCount, setRetryCount] = useState(0);
 
-  const [activeFilter, setActiveFilter] = useState(() => {
-    if (q) return { type: 'search', value: q };
-    if (initialGenre) return { type: 'genre', value: initialGenre };
-    return { type: 'latest', value: null };
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get('q') || '';
+  const genreParam = searchParams.get('genre') || '';
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const page = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+
+  const activeFilter = q
+    ? { type: 'search', value: q }
+    : genreParam
+      ? { type: 'genre', value: genreParam }
+      : { type: 'latest', value: null };
+
   const [searchQuery, setSearchQuery] = useState(q);
-  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  
+
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const filterRef = useRef(null);
-  
+
   // Trạng thái hero section
   const [heroIndex, setHeroIndex] = useState(0);
+
+  useEffect(() => {
+    setSearchQuery(q);
+  }, [q]);
 
   // Tự động chuyển slide hero
   useEffect(() => {
     const timer = setInterval(() => {
-      setHeroIndex(prev => (prev + 1) % 3);
+      setHeroIndex((prev) => (prev + 1) % 3);
     }, 6000);
     return () => clearInterval(timer);
   }, []);
 
   // Fetch thể loại một lần
   useEffect(() => {
+    let isCancelled = false;
     const fetchGenres = async () => {
       try {
         const data = await comicApi.getGenres();
-        if (data?.data?.items) {
+        if (!isCancelled && data?.data?.items) {
           setGenres(data.data.items);
         }
       } catch (err) {
-        console.error('Lỗi khi tải thể loại:', err);
+        if (!isCancelled) {
+          console.error('Lỗi khi tải thể loại:', err);
+        }
       }
     };
     fetchGenres();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // Đóng dropdown khi click bên ngoài
+  // Đóng dropdown khi click bên ngoài hoặc nhấn Escape
   useEffect(() => {
     function handleClickOutside(event) {
       if (filterRef.current && !filterRef.current.contains(event.target)) {
         setShowFilterDropdown(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [filterRef]);
-
-  // Dùng useCallback để tránh phải dùng eslint-disable
-  const fetchComics = useCallback(async (currentPage) => {
-    try {
-      setLoading(true);
-      let data = null;
-
-      if (activeFilter.type === 'latest') {
-        data = await comicApi.getLatestComics(currentPage);
-      } else if (activeFilter.type === 'genre') {
-        data = await comicApi.getComicsByGenre(activeFilter.value, currentPage);
-      } else if (activeFilter.type === 'search') {
-        data = await comicApi.searchComics(activeFilter.value);
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setShowFilterDropdown(false);
       }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
-      if (data && data.status === 'success') {
-        const items = data.data.items || [];
-        setComics(items);
+  // Fetch comics theo URL searchParams (single source of truth, không double-fetch)
+  useEffect(() => {
+    let isCancelled = false;
 
-        if (activeFilter.type !== 'search') {
-          const pagination = data.data.pagination || data.data.params?.pagination;
-          if (pagination) {
-            setTotalPages(
-              Math.max(1, Math.ceil(pagination.totalItems / (pagination.totalItemsPerPage || 24)))
-            );
+    const fetchComics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        let data = null;
+
+        if (q) {
+          data = await comicApi.searchComics(q);
+        } else if (genreParam) {
+          data = await comicApi.getComicsByGenre(genreParam, page);
+        } else {
+          data = await comicApi.getLatestComics(page);
+        }
+
+        if (isCancelled) return;
+
+        if (data && data.status === 'success') {
+          const items = data.data.items || [];
+          setComics(items);
+
+          if (!q) {
+            const pagination = data.data.pagination || data.data.params?.pagination;
+            if (pagination) {
+              setTotalPages(
+                Math.max(1, Math.ceil(pagination.totalItems / (pagination.totalItemsPerPage || 24)))
+              );
+            } else {
+              setTotalPages(1);
+            }
           } else {
             setTotalPages(1);
           }
         } else {
+          setComics([]);
           setTotalPages(1);
         }
-        setPage(currentPage);
-      } else {
-        setComics([]);
-        setTotalPages(1);
+      } catch (err) {
+        if (!isCancelled) {
+          setError('Không thể tải dữ liệu truyện tranh');
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       }
-      setError(null);
-    } catch (err) {
-      setError('Không thể tải dữ liệu truyện tranh');
-    } finally {
-      setLoading(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [activeFilter]);
+    };
 
-  useEffect(() => {
-    fetchComics(page);
-  }, [activeFilter, page, fetchComics]);
+    fetchComics();
+    return () => {
+      isCancelled = true;
+    };
+  }, [q, genreParam, page, retryCount]);
 
-  // Lắng nghe sự thay đổi của query parameters (khi user tìm kiếm, bấm thể loại hoặc chọn Mới Cập Nhật)
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const currentQ = params.get('q') || '';
-    const currentGenre = params.get('genre') || '';
-
-    if (currentQ) {
-      setSearchQuery(currentQ);
-      setPage(1);
-      setActiveFilter((prev) =>
-        prev.type === 'search' && prev.value === currentQ
-          ? prev
-          : { type: 'search', value: currentQ }
-      );
-    } else if (currentGenre) {
-      setSearchQuery('');
-      setPage(1);
-      setActiveFilter((prev) =>
-        prev.type === 'genre' && prev.value === currentGenre
-          ? prev
-          : { type: 'genre', value: currentGenre }
-      );
-    } else {
-      setSearchQuery('');
-      setPage(1);
-      setActiveFilter((prev) =>
-        prev.type === 'latest' && prev.value === null
-          ? prev
-          : { type: 'latest', value: null }
-      );
-    }
-  }, [location.search]);
+  const setPage = (nextPageOrUpdater) => {
+    const nextPage = typeof nextPageOrUpdater === 'function' ? nextPageOrUpdater(page) : nextPageOrUpdater;
+    const clamped = Math.max(1, Math.min(totalPages, nextPage));
+    const params = {};
+    if (q) params.q = q;
+    else if (genreParam) params.genre = genreParam;
+    if (clamped > 1) params.page = String(clamped);
+    setSearchParams(params);
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    setPage(1);
     if (!searchQuery.trim()) {
-      setActiveFilter({ type: 'latest', value: null });
-      navigate('/comics');
+      setSearchParams({});
       return;
     }
-    setActiveFilter({ type: 'search', value: searchQuery.trim() });
-    navigate(`/comics?q=${encodeURIComponent(searchQuery.trim())}`);
+    setSearchParams({ q: searchQuery.trim() });
   };
 
   const handleGenreClick = (slug) => {
     setSearchQuery('');
-    setPage(1);
-    setActiveFilter({ type: 'genre', value: slug });
     setShowFilterDropdown(false);
-    navigate(`/comics?genre=${encodeURIComponent(slug)}`);
+    setSearchParams({ genre: slug });
   };
 
   const clearFilter = () => {
     setSearchQuery('');
-    setPage(1);
-    setActiveFilter({ type: 'latest', value: null });
     setShowFilterDropdown(false);
-    navigate('/comics');
+    setSearchParams({});
   };
 
   // Tên tiêu đề filter hiện tại
@@ -262,7 +261,7 @@ function ComicHomePage() {
   };
 
   return (
-    <div className="pt-24 px-4 sm:px-8 lg:px-12 max-w-[1600px] mx-auto min-h-screen text-white pb-24 font-sans">
+    <div className="pt-6 px-4 sm:px-8 lg:px-12 max-w-[1600px] mx-auto min-h-screen text-white pb-24 font-sans">
       
       {/* Thanh Lọc và Tìm Kiếm */}
       <div className="mb-12 flex flex-col md:flex-row gap-6 items-center justify-between relative z-20 border-b border-white/5 pb-8">
@@ -282,9 +281,23 @@ function ComicHomePage() {
               placeholder="Tìm kiếm truyện..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900 border border-white/10 rounded-full py-2.5 px-10 text-sm text-zinc-200 focus:outline-none focus:border-white/40 transition-colors placeholder:text-zinc-600"
+              aria-label="Tìm kiếm truyện tranh"
+              className="w-full bg-zinc-900 border border-white/10 rounded-full py-2.5 pl-10 pr-9 text-sm text-zinc-200 focus:outline-none focus:border-white/40 transition-colors placeholder:text-zinc-600"
             />
-            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" size={16} />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  if (q) setSearchParams({});
+                }}
+                aria-label="Xóa tìm kiếm truyện"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1"
+              >
+                <FiX size={14} />
+              </button>
+            )}
           </form>
 
           {/* Dropdown Lọc */}
@@ -342,8 +355,16 @@ function ComicHomePage() {
           ))}
         </div>
       ) : error ? (
-        <div className="flex justify-center py-20 relative z-10">
-          <p className="text-zinc-400">{error}</p>
+        <div className="flex flex-col items-center justify-center py-20 relative z-10 gap-4">
+          <p className="text-zinc-300 text-lg">{error}</p>
+          <button
+            type="button"
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-full font-semibold text-sm hover:bg-zinc-200 transition-colors"
+          >
+            <FiRefreshCw size={15} />
+            <span>Thử lại</span>
+          </button>
         </div>
       ) : comics.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-40 relative z-10 gap-4">
@@ -365,7 +386,15 @@ function ComicHomePage() {
                   >
                     {/* Ảnh nền tối và cinematic */}
                     <div className="absolute inset-0">
-                      <img src={imgUrl} alt="nền" className="w-full h-full object-cover opacity-30 object-top" />
+                      <img
+                        src={imgUrl}
+                        alt={comic.name}
+                        className="w-full h-full object-cover opacity-30 object-top"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = FALLBACK_POSTER;
+                        }}
+                      />
                     </div>
                     {/* Gradient đổ bóng */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
@@ -428,6 +457,10 @@ function ComicHomePage() {
                     className="w-full h-full object-cover transform group-hover:scale-[1.04] group-hover:opacity-90 transition-all duration-700 ease-out"
                     loading="lazy"
                     decoding="async"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = FALLBACK_POSTER;
+                    }}
                   />
                   {comic.chaptersLatest?.[0] && (
                     <div className="absolute top-3 right-3 px-2 py-1 bg-black/60 backdrop-blur-md text-white text-[10px] font-medium tracking-wide rounded">

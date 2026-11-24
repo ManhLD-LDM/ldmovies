@@ -73,7 +73,7 @@ function EpisodeList({ episodes = [], selectedEpisode, onEpisodeClick, playerRef
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {title && (
           <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-            <div className="w-1.5 h-6 bg-gradient-to-b from-red-500 to-pink-500 rounded-full" />
+            <div className="w-1.5 h-6 bg-gradient-to-b from-primary-500 to-violet-500 rounded-full" />
             <span>{title}</span>
             <span className="text-xs sm:text-sm font-semibold text-gray-300 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10">
               {episodes.length} tập
@@ -121,7 +121,7 @@ function EpisodeList({ episodes = [], selectedEpisode, onEpisodeClick, playerRef
                 onClick={() => setActiveRangeIndex(range.index)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-red-500 text-white shadow-md shadow-red-500/30'
+                    ? 'bg-primary-600 text-white shadow-md shadow-primary-500/30'
                     : 'bg-white/5 text-gray-400 hover:bg-white/15 hover:text-white border border-white/10'
                 }`}
               >
@@ -162,7 +162,7 @@ function EpisodeList({ episodes = [], selectedEpisode, onEpisodeClick, playerRef
                   onClick={() => onEpisodeClick(episode, playerRef)}
                   className={`h-10 px-2.5 rounded-xl font-semibold text-xs sm:text-sm whitespace-nowrap flex items-center justify-center gap-1.5 transition-all transform active:scale-95 border ${
                     isSelected
-                      ? 'bg-gradient-to-r from-red-600 via-pink-600 to-red-500 text-white font-bold border-red-400/50 shadow-lg shadow-red-500/30 scale-105 z-10'
+                      ? 'bg-gradient-to-r from-primary-600 via-violet-600 to-primary-500 text-white font-bold border-primary-400/50 shadow-lg shadow-primary-500/30 scale-105 z-10'
                       : 'bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white border-white/10 hover:border-white/20'
                   }`}
                   title={displayName}

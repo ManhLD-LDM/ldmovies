@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { FiChevronLeft, FiChevronRight, FiList, FiHome } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiList, FiHome, FiRefreshCw } from 'react-icons/fi';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
 import useComicHistoryStore from '../stores/comicHistoryStore';
@@ -26,9 +26,11 @@ function ComicReaderPage() {
       : 'Đang Đọc Truyện'
   );
   
-  // Toolbar state
+  // Toolbar & scroll progress state
   const [showToolbar, setShowToolbar] = useState(true);
   const [showChapterList, setShowChapterList] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [failedImages, setFailedImages] = useState({});
   const lastScrollY = useRef(0);
   
   const activeChapterRef = useRef(null);
@@ -78,10 +80,15 @@ function ComicReaderPage() {
     }
   }, [showChapterList]);
 
-  // Smart hide toolbar on scroll down
+  // Smart hide toolbar & track reading progress on scroll
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight > 0) {
+        setScrollProgress(Math.min(100, Math.max(0, (currentScrollY / docHeight) * 100)));
+      }
+
       if (currentScrollY > lastScrollY.current && currentScrollY > 150) {
         setShowToolbar(false);
         setShowChapterList(false);
@@ -96,13 +103,19 @@ function ComicReaderPage() {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
     const fetchChapterAndComic = async () => {
       try {
         setLoading(true);
+        setError(null);
+        setFailedImages({});
+        setScrollProgress(0);
         const [chapData, cData] = await Promise.all([
           comicApi.getComicChapter(chapterId),
           comicApi.getComicDetails(slug)
         ]);
+
+        if (isCancelled) return;
 
         if (chapData.status === 'success') {
           setChapterData(chapData.data);
@@ -114,13 +127,48 @@ function ComicReaderPage() {
           setComicData(cData.data);
         }
       } catch (err) {
-        setError('Không thể tải nội dung chương này.');
+        if (!isCancelled) {
+          setError('Không thể tải nội dung chương này.');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
     if (chapterId && slug) fetchChapterAndComic();
+    return () => {
+      isCancelled = true;
+    };
   }, [chapterId, slug]);
+
+  let prevChapter = null;
+  let nextChapter = null;
+
+  if (comicData && comicData.chapters) {
+    const allChapters = comicData.chapters;
+    const currentIndex = allChapters.findIndex(c => extractChapterId(c) === chapterId);
+    if (currentIndex !== -1) {
+      if (currentIndex > 0) prevChapter = allChapters[currentIndex - 1];
+      if (currentIndex < allChapters.length - 1) nextChapter = allChapters[currentIndex + 1];
+    }
+  }
+
+  // Keyboard shortcuts (ArrowLeft / ArrowRight) for switching chapters
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'ArrowLeft' && prevChapter) {
+        navigate(`/comics/${slug}/chapter/${extractChapterId(prevChapter)}`);
+      } else if (e.key === 'ArrowRight' && nextChapter) {
+        navigate(`/comics/${slug}/chapter/${extractChapterId(nextChapter)}`);
+      } else if (e.key === 'Escape') {
+        setShowChapterList(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [prevChapter, nextChapter, slug, navigate]);
 
   if (loading) {
     return (
@@ -145,24 +193,19 @@ function ComicReaderPage() {
   const imagePath = chapterInfo.chapter_path;
   const images = chapterInfo.chapter_image || [];
 
-  let prevChapter = null;
-  let nextChapter = null;
-
-  if (comicData && comicData.chapters) {
-    const allChapters = comicData.chapters;
-    const currentIndex = allChapters.findIndex(c => extractChapterId(c) === chapterId);
-    if (currentIndex !== -1) {
-      if (currentIndex > 0) prevChapter = allChapters[currentIndex - 1];
-      if (currentIndex < allChapters.length - 1) nextChapter = allChapters[currentIndex + 1];
-    }
-  }
-
   const API_BASE = import.meta.env.VITE_API_URL || '/api';
   const targetWidth = dataSaver ? 540 : Math.min(Math.round((window.innerWidth || 800) * (window.devicePixelRatio || 1)), 900);
   const targetQuality = dataSaver ? 45 : 62;
 
   return (
     <div className="bg-[#000000] min-h-screen relative text-zinc-200 font-sans selection:bg-white/20">
+      {/* Reading Progress Bar */}
+      <div className="fixed top-0 left-0 right-0 h-0.5 bg-white/10 z-50 pointer-events-none">
+        <div
+          className="h-full bg-primary-500 transition-[width] duration-150"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
       
       {/* Top Floating Nav - Minimal Pill */}
       <div 
@@ -184,25 +227,55 @@ function ComicReaderPage() {
         </div>
       </div>
 
-      {/* Reader Images Container */}
-      <div className="max-w-4xl mx-auto w-full flex flex-col items-center pb-32">
+      {/* Reader Images Container - Tap/click to toggle toolbar */}
+      <div
+        className="max-w-4xl mx-auto w-full flex flex-col items-center pb-32 cursor-pointer"
+        onClick={() => {
+          setShowToolbar((prev) => !prev);
+          setShowChapterList(false);
+        }}
+      >
         {images.map((img, index) => {
-          const rawUrl = `${domain_cdn}/${imagePath}/${img.image_file}`;
+          const rawUrl = img.image_file?.startsWith('http')
+            ? img.image_file
+            : `${domain_cdn}/${imagePath}/${img.image_file}`;
           const proxyUrl = `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&w=${targetWidth}&q=${targetQuality}`;
+          const isFailed = failedImages[index];
 
           return (
-            <div key={index} className="w-full relative flex items-center justify-center bg-black min-h-[300px]">
-              <img 
-                src={proxyUrl}
-                alt={`Trang ${index + 1}`}
-                className="w-full h-auto object-contain select-none"
-                loading={index < 2 ? "eager" : "lazy"}
-                decoding="async"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = rawUrl; // Fallback directly to original CDN if proxy fails
-                }}
-              />
+            <div key={`${chapterId}-${index}`} className="w-full relative flex items-center justify-center bg-black min-h-[260px]">
+              {isFailed ? (
+                <div className="py-12 px-4 text-center flex flex-col items-center gap-3 border border-white/10 rounded-xl my-4 bg-zinc-950 w-full max-w-md">
+                  <p className="text-xs text-zinc-400">Không thể tải trang {index + 1}</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFailedImages((prev) => ({ ...prev, [index]: false }));
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-full transition-colors"
+                  >
+                    <FiRefreshCw size={12} />
+                    <span>Tải lại ảnh</span>
+                  </button>
+                </div>
+              ) : (
+                <img
+                  src={proxyUrl}
+                  alt={`Trang ${index + 1}`}
+                  className="w-full h-auto object-contain select-none"
+                  loading={index < 2 ? "eager" : "lazy"}
+                  decoding="async"
+                  onError={(e) => {
+                    if (e.target.dataset.retriedRaw !== '1') {
+                      e.target.dataset.retriedRaw = '1';
+                      e.target.src = rawUrl;
+                    } else {
+                      setFailedImages((prev) => ({ ...prev, [index]: true }));
+                    }
+                  }}
+                />
+              )}
             </div>
           );
         })}
@@ -251,7 +324,7 @@ function ComicReaderPage() {
             <button 
               onClick={() => prevChapter && navigate(`/comics/${slug}/chapter/${extractChapterId(prevChapter)}`)}
               disabled={!prevChapter}
-              className={`flex items-center gap-2 px-6 py-3 rounded-full transition-colors text-sm font-medium ${prevChapter ? 'hover:bg-white/10 text-white' : 'text-zinc-600 cursor-not-allowed'}`}
+              className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-full transition-colors text-sm font-medium whitespace-nowrap ${prevChapter ? 'hover:bg-white/10 text-white' : 'text-zinc-600 cursor-not-allowed'}`}
             >
               <FiChevronLeft /> Trước
             </button>
@@ -259,7 +332,8 @@ function ComicReaderPage() {
             <button 
               ref={listBtnRef}
               onClick={() => setShowChapterList(!showChapterList)}
-              className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${showChapterList ? 'bg-white text-black' : 'hover:bg-white/10 text-zinc-400 hover:text-white'}`}
+              className={`w-12 h-12 shrink-0 flex items-center justify-center rounded-full transition-colors ${showChapterList ? 'bg-white text-black' : 'hover:bg-white/10 text-zinc-400 hover:text-white'}`}
+              aria-label="Danh sách chương"
             >
               <FiList size={18} />
             </button>
@@ -267,7 +341,7 @@ function ComicReaderPage() {
             <button 
               onClick={() => nextChapter && navigate(`/comics/${slug}/chapter/${extractChapterId(nextChapter)}`)}
               disabled={!nextChapter}
-              className={`flex items-center gap-2 px-6 py-3 rounded-full transition-colors text-sm font-medium ${nextChapter ? 'bg-white text-black hover:bg-gray-200' : 'text-zinc-600 cursor-not-allowed'}`}
+              className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-full transition-colors text-sm font-medium whitespace-nowrap ${nextChapter ? 'bg-white text-black hover:bg-gray-200' : 'text-zinc-600 cursor-not-allowed'}`}
             >
               Tiếp <FiChevronRight />
             </button>

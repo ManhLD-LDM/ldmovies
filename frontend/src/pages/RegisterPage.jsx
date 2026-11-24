@@ -1,12 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FiEye, FiEyeOff, FiLock, FiMail, FiUser } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import useAuthStore from '../stores/authStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function RegisterPage() {
+  useDocumentTitle('Đăng Ký');
   const navigate = useNavigate();
-  const { register, isLoading, error, clearError } = useAuthStore();
+  const { register, isLoading, error, clearError, isAuthenticated } = useAuthStore();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
   
   const [formData, setFormData] = useState({
     username: '',
@@ -143,7 +151,7 @@ function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="Nhập lại mật khẩu"
-                  className="w-full px-4 py-3 pl-12 bg-dark-300 border border-dark-400 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 transition-colors"
+                  className="w-full px-4 py-3 pl-12 pr-12 bg-dark-300 border border-dark-400 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 transition-colors"
                   required
                 />
                 <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />

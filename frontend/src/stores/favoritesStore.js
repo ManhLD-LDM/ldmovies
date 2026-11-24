@@ -5,37 +5,64 @@ const useFavoritesStore = create((set, get) => ({
   favoriteMovies: [],
   favoriteAnime: [],
   favoriteComics: [],
+  loadingMovies: false,
+  loadingAnime: false,
+  loadingComics: false,
   isLoading: false,
   error: null,
 
   // Fetch favorites
   fetchFavoriteMovies: async () => {
-    set({ isLoading: true, error: null });
+    set({ loadingMovies: true, isLoading: true, error: null });
     try {
       const response = await favoritesApi.getFavoriteMovies();
-      set({ favoriteMovies: response.data, isLoading: false });
+      set((state) => ({
+        favoriteMovies: response.data,
+        loadingMovies: false,
+        isLoading: state.loadingAnime || state.loadingComics,
+      }));
     } catch (error) {
-      set({ error: error.response?.data?.message || 'Failed to fetch favorites', isLoading: false });
+      set((state) => ({
+        error: error.response?.data?.message || 'Failed to fetch favorites',
+        loadingMovies: false,
+        isLoading: state.loadingAnime || state.loadingComics,
+      }));
     }
   },
 
   fetchFavoriteAnime: async () => {
-    set({ isLoading: true, error: null });
+    set({ loadingAnime: true, isLoading: true, error: null });
     try {
       const response = await favoritesApi.getFavoriteAnime();
-      set({ favoriteAnime: response.data, isLoading: false });
+      set((state) => ({
+        favoriteAnime: response.data,
+        loadingAnime: false,
+        isLoading: state.loadingMovies || state.loadingComics,
+      }));
     } catch (error) {
-      set({ error: error.response?.data?.message || 'Failed to fetch favorites', isLoading: false });
+      set((state) => ({
+        error: error.response?.data?.message || 'Failed to fetch favorites',
+        loadingAnime: false,
+        isLoading: state.loadingMovies || state.loadingComics,
+      }));
     }
   },
 
   fetchFavoriteComics: async () => {
-    set({ isLoading: true, error: null });
+    set({ loadingComics: true, isLoading: true, error: null });
     try {
       const response = await favoritesApi.getFavoriteComics();
-      set({ favoriteComics: response.data, isLoading: false });
+      set((state) => ({
+        favoriteComics: response.data,
+        loadingComics: false,
+        isLoading: state.loadingMovies || state.loadingAnime,
+      }));
     } catch (error) {
-      set({ error: error.response?.data?.message || 'Failed to fetch favorites', isLoading: false });
+      set((state) => ({
+        error: error.response?.data?.message || 'Failed to fetch favorites',
+        loadingComics: false,
+        isLoading: state.loadingMovies || state.loadingAnime,
+      }));
     }
   },
 
@@ -123,6 +150,7 @@ const useFavoritesStore = create((set, get) => ({
     return favoriteComics.some(comic => comic.comicId === comicId);
   },
 
+  clearFavorites: () => set({ favoriteMovies: [], favoriteAnime: [], favoriteComics: [], error: null }),
   clearError: () => set({ error: null }),
 }));
 

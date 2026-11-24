@@ -4,13 +4,16 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { userApi } from '../services/api';
 import useAuthStore from '../stores/authStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 function ProfilePage() {
+  useDocumentTitle('Hồ Sơ Cá Nhân');
   const navigate = useNavigate();
   const { user, updateProfile, isLoading, isAuthenticated } = useAuthStore();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
@@ -44,6 +47,17 @@ function ProfilePage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!showChangePassword) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowChangePassword(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showChangePassword]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -76,6 +90,7 @@ function ProfilePage() {
       return;
     }
 
+    setIsChangingPassword(true);
     try {
       await userApi.changePassword({
         currentPassword: passwordData.currentPassword,
@@ -86,6 +101,8 @@ function ProfilePage() {
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Đổi mật khẩu thất bại');
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -233,8 +250,14 @@ function ProfilePage() {
 
       {/* Change Password Modal */}
       {showChangePassword && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-200 rounded-2xl p-8 max-w-md w-full">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowChangePassword(false)}
+        >
+          <div
+            className="bg-dark-200 rounded-2xl p-8 max-w-md w-full border border-white/10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-white">Đổi mật khẩu</h2>
               <button
@@ -323,9 +346,10 @@ function ProfilePage() {
               <div className="flex gap-2 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                  disabled={isChangingPassword}
+                  className="flex-1 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50"
                 >
-                  Đổi mật khẩu
+                  {isChangingPassword ? 'Đang xử lý...' : 'Đổi mật khẩu'}
                 </button>
                 <button
                   type="button"

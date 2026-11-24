@@ -1,21 +1,28 @@
 import { useState, useEffect } from 'react';
-import { FiInfo, FiPlay } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiInfo, FiPlay } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 
-function HeroSection({ movies = [] }) {
+function HeroSection({ movies = [], loading = false }) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
-    if (!movies || movies.length <= 1) return;
+    if (currentIndex >= movies.length && movies.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [movies.length, currentIndex]);
+
+  useEffect(() => {
+    if (!movies || movies.length <= 1 || isPaused) return;
 
     const interval = setInterval(() => {
       setCurrentIndex((prevIndex) => (prevIndex + 1) % movies.length);
-    }, 4000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [movies]);
+  }, [movies, isPaused]);
 
-  if (!movies || movies.length === 0) {
+  if (loading) {
     return (
       <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] bg-dark-200 animate-pulse -mt-16">
         <div className="absolute bottom-0 left-0 right-0 p-8 pb-16 md:pb-20">
@@ -29,8 +36,24 @@ function HeroSection({ movies = [] }) {
     );
   }
 
+  if (!movies || movies.length === 0) {
+    return null;
+  }
+
+  const goPrev = () => {
+    setCurrentIndex((prev) => (prev - 1 + movies.length) % movies.length);
+  };
+
+  const goNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % movies.length);
+  };
+
   return (
-    <div className="relative h-[70vh] min-h-[550px] md:min-h-[600px] overflow-hidden bg-bg-900 -mt-16">
+    <div
+      className="relative h-[70vh] min-h-[550px] md:min-h-[600px] overflow-hidden bg-bg-900 -mt-16 group/hero"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
       {movies.map((movie, index) => {
         const isActive = index === currentIndex;
         const isNext = index === (currentIndex + 1) % movies.length;
@@ -42,7 +65,7 @@ function HeroSection({ movies = [] }) {
           <div
             key={movie.slug || index}
             className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-              isActive ? 'opacity-100 z-10' : 'opacity-0 z-0'
+              isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
             }`}
           >
             {/* Ảnh nền */}
@@ -51,7 +74,6 @@ function HeroSection({ movies = [] }) {
                 src={movie.thumb_url || movie.poster}
                 alt={movie.name}
                 loading={index === 0 ? 'eager' : 'lazy'}
-                fetchpriority={index === 0 ? 'high' : 'low'}
                 decoding="async"
                 className={`w-full h-full object-cover ${isActive ? 'animate-slow-zoom' : ''}`}
               />
@@ -118,7 +140,7 @@ function HeroSection({ movies = [] }) {
                   {/* Các nút hành động */}
                   <div className="flex items-center gap-3">
                     <Link
-                      to={detailPath}
+                      to={`${detailPath}?autoplay=1`}
                       className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-all font-medium text-sm shadow-lg shadow-primary-600/30"
                     >
                       <FiPlay size={18} />
@@ -138,6 +160,28 @@ function HeroSection({ movies = [] }) {
           </div>
         );
       })}
+
+      {/* Prev / Next Arrows */}
+      {movies.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={goPrev}
+            aria-label="Phim trước"
+            className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/70 text-white border border-white/10 backdrop-blur-sm opacity-0 group-hover/hero:opacity-100 transition-opacity"
+          >
+            <FiChevronLeft size={22} />
+          </button>
+          <button
+            type="button"
+            onClick={goNext}
+            aria-label="Phim tiếp theo"
+            className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 items-center justify-center rounded-full bg-black/40 hover:bg-black/70 text-white border border-white/10 backdrop-blur-sm opacity-0 group-hover/hero:opacity-100 transition-opacity"
+          >
+            <FiChevronRight size={22} />
+          </button>
+        </>
+      )}
 
       {/* Dots Indicator with accessible touch targets (≥44x44px) */}
       {movies.length > 1 && (

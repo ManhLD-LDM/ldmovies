@@ -98,18 +98,18 @@ function HistoryPage() {
   const isLoading = activeTab === 'movies' ? isMovieLoading : isComicLoading;
 
   return (
-    <div className="container mx-auto px-4 py-8 pt-24 min-h-screen">
+    <div className="container mx-auto px-4 py-8 pt-6 min-h-screen">
       <div className="flex items-center gap-3 mb-8">
         <FiClock className="text-primary-500 text-3xl" />
         <h1 className="text-3xl md:text-4xl font-bold text-white">Lịch sử</h1>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-white/10">
+      <div className="flex gap-2 mb-8 border-b border-white/10 overflow-x-auto whitespace-nowrap scrollbar-hide">
         <button
           type="button"
           onClick={() => setActiveTab('movies')}
-          className={`flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
+          className={`shrink-0 flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
             activeTab === 'movies'
               ? 'text-primary-400 border-b-2 border-primary-500 bg-primary-500/5'
               : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -131,7 +131,7 @@ function HistoryPage() {
         <button
           type="button"
           onClick={() => setActiveTab('comics')}
-          className={`flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
+          className={`shrink-0 flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
             activeTab === 'comics'
               ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5'
               : 'text-gray-400 hover:text-white hover:bg-white/5'

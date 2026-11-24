@@ -72,27 +72,39 @@ export function useContentDetail(id) {
     // ── Fetch content từ kkphimApi ─────────────────────────────────────────
     useEffect(() => {
         if (!id) return;
+        let isCancelled = false;
+
         const fetchContent = async () => {
             setLoading(true);
             try {
                 const detail = await kkphimApi.getAnimeDetail(id);
+                if (isCancelled) return;
                 setContent(detail.data || null);
                 setEpisodes(detail.data?.episodes || []);
             } catch (error) {
-                setContent(null);
-                setEpisodes([]);
-                console.error('Error fetching content:', error);
-                toast.error('Không thể tải thông tin phim');
+                if (!isCancelled) {
+                    setContent(null);
+                    setEpisodes([]);
+                    console.error('Error fetching content:', error);
+                    toast.error('Không thể tải thông tin phim');
+                }
             } finally {
-                setLoading(false);
+                if (!isCancelled) {
+                    setLoading(false);
+                }
             }
         };
         fetchContent();
+
+        return () => {
+            isCancelled = true;
+        };
     }, [id]);
 
     // ── Fetch Recommendations (Cùng bộ & Cùng thể loại) ────────────────────
     useEffect(() => {
         if (!content) return;
+        let isCancelled = false;
 
         const fetchRecommendations = async () => {
             setRecommendationsLoading(true);
@@ -104,13 +116,16 @@ export function useContentDetail(id) {
                 if (franchiseKeyword) {
                     try {
                         const searchRes = await kkphimApi.searchAnime(franchiseKeyword);
+                        if (isCancelled) return;
                         franchiseItems = (searchRes.data || []).filter(
                             item => item.slug !== id && item.id !== id && item.slug !== content.slug
                         );
                         setFranchiseRecommendations(franchiseItems);
                     } catch (err) {
-                        console.error('Error fetching franchise recommendations:', err);
-                        setFranchiseRecommendations([]);
+                        if (!isCancelled) {
+                            console.error('Error fetching franchise recommendations:', err);
+                            setFranchiseRecommendations([]);
+                        }
                     }
                 } else {
                     setFranchiseRecommendations([]);
@@ -121,6 +136,7 @@ export function useContentDetail(id) {
                 if (categories.length > 0) {
                     try {
                         const allCatObjects = await kkphimApi.getAllCategories();
+                        if (isCancelled) return;
                         
                         const matchedCatObjects = categories.map(cat => {
                             if (typeof cat === 'object' && cat.slug) return cat;
@@ -133,6 +149,7 @@ export function useContentDetail(id) {
                             const genreRes = isAnime
                                 ? await kkphimApi.filterAnimeByCategories([matchedCatObjects[0]], 1, 24)
                                 : await kkphimApi.filterMoviesByCategories([matchedCatObjects[0]], 1, 24);
+                            if (isCancelled) return;
 
                             const franchiseSlugs = new Set(franchiseItems.map(f => f.slug));
                             const genreItems = (genreRes.data || []).filter(
@@ -144,25 +161,35 @@ export function useContentDetail(id) {
                             setGenreRecommendations([]);
                         }
                     } catch (err) {
-                        console.error('Error fetching genre recommendations:', err);
-                        setGenreRecommendations([]);
+                        if (!isCancelled) {
+                            console.error('Error fetching genre recommendations:', err);
+                            setGenreRecommendations([]);
+                        }
                     }
                 } else {
                     setGenreRecommendations([]);
                 }
             } catch (error) {
-                console.error('Error fetching recommendations:', error);
+                if (!isCancelled) {
+                    console.error('Error fetching recommendations:', error);
+                }
             } finally {
-                setRecommendationsLoading(false);
+                if (!isCancelled) {
+                    setRecommendationsLoading(false);
+                }
             }
         };
 
         fetchRecommendations();
+        return () => {
+            isCancelled = true;
+        };
     }, [content, id]);
 
     // ── Sync player với URL params & Khôi phục lịch sử xem ─────────────────
     useEffect(() => {
         const episodeParam = searchParams.get('ep');
+        const autoplayParam = searchParams.get('autoplay');
         const timeParam = parseInt(searchParams.get('t') || '0', 10);
 
         if (episodeParam && episodes.length > 0) {
@@ -176,6 +203,30 @@ export function useContentDetail(id) {
                 hasCheckedAutoResumeRef.current = true;
             }
         } else if (!episodeParam && episodes.length > 0) {
+            if (autoplayParam === '1') {
+                hasCheckedAutoResumeRef.current = true;
+                const watchHistory = useWatchHistoryStore.getState().watchHistory;
+                const historyItem = watchHistory.find(h => h.slug === id || h.id === id);
+                let targetEpisode = episodes[0];
+
+                if (historyItem?.episodeName) {
+                    const historyEpIndex = episodes.findIndex(
+                        ep => ep.name === historyItem.episodeName || ep.slug === historyItem.episodeName
+                    );
+                    if (historyEpIndex >= 0) {
+                        targetEpisode = episodes[historyEpIndex];
+                        const isFinished = historyItem.duration > 0 && (historyItem.duration - historyItem.progress < 10);
+                        if (isFinished && historyEpIndex + 1 < episodes.length) {
+                            targetEpisode = episodes[historyEpIndex + 1];
+                        }
+                    }
+                }
+
+                const epParam = encodeURIComponent(targetEpisode.name || targetEpisode.slug);
+                navigate(`?ep=${epParam}`, { replace: true });
+                return;
+            }
+
             // Tự động khôi phục lịch sử xem CHỈ KHI lần đầu tiên load trang và chưa xem tập nào
             if (!hasCheckedAutoResumeRef.current && !hasClosedPlayer) {
                 hasCheckedAutoResumeRef.current = true;
@@ -193,7 +244,7 @@ export function useContentDetail(id) {
                             targetEpisode = episodes[historyEpIndex + 1];
                         }
                         
-                        navigate(`?ep=${targetEpisode.name || targetEpisode.slug}`, { replace: true });
+                        navigate(`?ep=${encodeURIComponent(targetEpisode.name || targetEpisode.slug)}`, { replace: true });
                         return;
                     }
                 }
@@ -209,7 +260,7 @@ export function useContentDetail(id) {
     // ── Episode click handler ──────────────────────────────────────────────
     const handleEpisodeClick = (episode, playerRef) => {
         const isAlreadyPlaying = showPlayer && selectedEpisode;
-        const epParam = episode.name || episode.slug;
+        const epParam = encodeURIComponent(episode.name || episode.slug);
         setInitialTime(0);
 
         if (isAlreadyPlaying) {

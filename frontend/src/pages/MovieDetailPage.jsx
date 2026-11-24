@@ -6,6 +6,7 @@ import MovieSection from '../components/MovieSection';
 import VideoPlayer from '../components/VideoPlayer';
 import { toCategorySlug } from '../services/kkphimApi';
 import { useContentDetail } from '../stores/useContentDetail';
+import { FALLBACK_POSTER, stripHtmlAndDecode } from '../utils/textUtils';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
 function MovieDetailPage() {
@@ -14,6 +15,10 @@ function MovieDetailPage() {
   const navigate = useNavigate();
   const playerRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [id]);
 
   // Dùng shared hook — xử lý content, episodes, favorites và recommendations
   const {
@@ -41,11 +46,13 @@ function MovieDetailPage() {
     }
   }, [loading, movie, id, location.search, navigate]);
 
+  const cleanDescription = stripHtmlAndDecode(movie?.content || movie?.description);
+
   useDocumentTitle(
     movie?.name
       ? `${isTrueAnime ? 'Anime' : 'Phim'} ${movie.name}`
       : undefined,
-    movie?.content ? movie.content.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
+    cleanDescription ? cleanDescription.slice(0, 160) : undefined
   );
 
   if (loading || movie?.type === 'hoathinh') {
@@ -72,14 +79,13 @@ function MovieDetailPage() {
   return (
     <div className="min-h-screen">
       {/* Hero Section with Backdrop */}
-      <div className="relative min-h-[75vh] flex items-end pt-28 pb-12 overflow-hidden">
+      <div className="relative min-h-[75vh] -mt-16 flex items-end pt-28 pb-12 overflow-hidden">
         <div className="absolute inset-0">
           {(movie.thumb_url || movie.poster) && (
             <img
               src={movie.thumb_url || movie.poster}
               alt=""
               aria-hidden="true"
-              fetchpriority="high"
               decoding="async"
               className="w-full h-full object-cover scale-105 animate-slow-zoom"
             />
@@ -91,12 +97,12 @@ function MovieDetailPage() {
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-8 items-start">
             {/* Poster */}
             <img
-              src={movie.poster}
+              src={movie.poster || FALLBACK_POSTER}
               alt={movie.name}
               className="w-48 h-72 object-cover rounded-lg shadow-2xl hidden md:block"
               onError={(e) => {
                 e.target.onerror = null;
-                e.target.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='288' viewBox='0 0 192 288'%3E%3Crect fill='%231E1E28' width='192' height='288'/%3E%3Ctext x='96' y='148' font-family='Arial' font-size='48' fill='%234B4B6A' text-anchor='middle'%3E🎬%3C/text%3E%3C/svg%3E`;
+                e.target.src = FALLBACK_POSTER;
               }}
             />
 
@@ -153,9 +159,20 @@ function MovieDetailPage() {
                 </div>
               )}
 
-              {/* Favorite Button */}
-              <div className="mb-6">
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-3 mb-6">
+                {episodes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleEpisodeClick(selectedEpisode || episodes[0], playerRef)}
+                    className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg shadow-primary-600/30"
+                  >
+                    <FiPlay className="fill-current" size={18} />
+                    <span>{selectedEpisode ? `Tiếp Tục (${selectedEpisode.name})` : 'Xem Ngay'}</span>
+                  </button>
+                )}
                 <button
+                  type="button"
                   onClick={() => handleFavoriteToggle(id, movie)}
                   className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all transform hover:scale-105 ${isFavorited
                     ? 'bg-red-500 text-white hover:bg-red-600'
@@ -170,19 +187,20 @@ function MovieDetailPage() {
               {/* Description */}
               <div className="mb-6">
                 <h2 className="text-2xl font-black text-white mb-3 flex items-center gap-2">
-                  <div className="w-1 h-6 bg-gradient-to-b from-red-500 to-pink-500 rounded-full" />
+                  <div className="w-1 h-6 bg-gradient-to-b from-primary-500 to-violet-500 rounded-full" />
                   <span>Nội dung</span>
                 </h2>
-                <div className="text-gray-300 leading-relaxed text-base">
-                  {(!isExpanded && (movie.content || movie.description)?.length > 250) ? (
-                    <p>{(movie.content || movie.description).substring(0, 250)}...</p>
+                <div className="text-gray-300 leading-relaxed text-base whitespace-pre-line">
+                  {(!isExpanded && cleanDescription.length > 250) ? (
+                    <p>{cleanDescription.substring(0, 250)}...</p>
                   ) : (
-                    <p>{movie.content || movie.description || 'Không có mô tả'}</p>
+                    <p>{cleanDescription || 'Không có mô tả'}</p>
                   )}
-                  {(movie.content || movie.description)?.length > 250 && (
+                  {cleanDescription.length > 250 && (
                     <button 
+                      type="button"
                       onClick={() => setIsExpanded(!isExpanded)}
-                      className="text-red-500 hover:text-red-400 font-semibold mt-2 transition-colors"
+                      className="text-primary-400 hover:text-primary-300 font-semibold mt-2 transition-colors"
                     >
                       {isExpanded ? 'Ẩn bớt' : 'Xem thêm'}
                     </button>

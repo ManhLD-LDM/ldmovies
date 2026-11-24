@@ -78,23 +78,54 @@ function Navbar() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isNavbarVisible, setIsNavbarVisible] = useState(true);
 
   const desktopSearchRef = useRef(null);
   const mobileSearchRef = useRef(null);
   const userMenuRef = useRef(null);
+  const lastScrollY = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
   const debounceTimeout = useRef(null);
 
   const { user, isAuthenticated, logout } = useAuthStore();
-  const { appMode, toggleAppMode } = useAppStore();
+  const { appMode, setAppMode } = useAppStore();
   const { enabled: dataSaverEnabled, toggle: toggleDataSaver } = useDataSaverStore();
+
+  const isDetailPage =
+    (/^\/(movies|anime)\/[^/]+$/.test(location.pathname) &&
+      !location.pathname.endsWith('/filter')) ||
+    location.pathname.includes('/watch/');
 
   useEffect(() => {
     setIsMenuOpen(false);
     setShowSuggestions(false);
     setSelectedIndex(-1);
+    setShowUserMenu(false);
+    setIsNavbarVisible(true);
+    lastScrollY.current = window.scrollY;
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (!isDetailPage || isMenuOpen || showSuggestions || showUserMenu) {
+        setIsNavbarVisible(true);
+        lastScrollY.current = currentScrollY;
+        return;
+      }
+
+      if (currentScrollY > 80 && currentScrollY > lastScrollY.current + 6) {
+        setIsNavbarVisible(false);
+      } else if (currentScrollY < lastScrollY.current - 6 || currentScrollY <= 80) {
+        setIsNavbarVisible(true);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isDetailPage, isMenuOpen, showSuggestions, showUserMenu]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -109,8 +140,20 @@ function Navbar() {
       }
     };
 
+    const handleGlobalKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setShowUserMenu(false);
+        setIsMenuOpen(false);
+        setShowSuggestions(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
   }, []);
 
   useEffect(() => {
@@ -231,119 +274,148 @@ function Navbar() {
     navigate('/');
   };
 
-  const isDetailPage =
-    (/^\/(movies|anime)\/[^/]+$/.test(location.pathname) &&
-      !location.pathname.endsWith('/filter')) ||
-    location.pathname.includes('/watch/');
-  const positionClass = isDetailPage ? "absolute top-0 left-0 right-0 z-40" : "fixed top-0 left-0 right-0 z-50";
+  const handleSwitchMode = (targetMode) => {
+    setAppMode(targetMode);
+    navigate(targetMode === 'comic' ? '/comics' : '/');
+    setIsMenuOpen(false);
+  };
 
   return (
-    <nav className={`${positionClass} bg-dark-100/85 backdrop-blur-md border-b border-white/10 shadow-lg`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-16 gap-3">
-          {/* Logo */}
-          <Link
-            to={appMode === 'movie' ? "/" : "/comics"}
-            className="flex items-center gap-2 group shrink-0 whitespace-nowrap"
-          >
-            <span className={`text-xl sm:text-2xl font-extrabold tracking-tight bg-gradient-to-r ${
-              appMode === 'movie'
-                ? 'from-violet-400 via-purple-400 to-indigo-400'
-                : 'from-cyan-400 via-teal-400 to-emerald-400'
-            } bg-clip-text text-transparent group-hover:opacity-90 transition-opacity`}>
-              {appMode === 'movie' ? 'LowDetailMovies' : 'LowDetailComics'}
-            </span>
-          </Link>
-
-          {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium whitespace-nowrap">
-            {appMode === 'movie' ? (
-              <>
-                <Link
-                  to="/"
-                  className={`transition-colors py-1 ${
-                    location.pathname === '/' ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Trang Chủ
-                </Link>
-                <Link
-                  to="/movies"
-                  className={`transition-colors py-1 ${
-                    location.pathname.startsWith('/movies') ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Phim
-                </Link>
-                <Link
-                  to="/anime"
-                  className={`transition-colors py-1 ${
-                    location.pathname.startsWith('/anime') ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Anime
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link
-                  to="/comics"
-                  className={`transition-colors py-1 ${
-                    location.pathname === '/comics' && !location.search.includes('sort=latest')
-                      ? 'text-teal-400 font-semibold'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Trang Chủ
-                </Link>
-                <Link
-                  to="/comics?sort=latest"
-                  className={`transition-colors py-1 ${
-                    location.pathname === '/comics' && location.search.includes('sort=latest')
-                      ? 'text-teal-400 font-semibold'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Mới Cập Nhật
-                </Link>
-              </>
-            )}
-
-            {/* Data Saver Badge */}
-            <button
-              onClick={toggleDataSaver}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${
-                dataSaverEnabled
-                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-              }`}
-              title={dataSaverEnabled ? 'Chế độ tiết kiệm Data: ĐANG BẬT' : 'Bật chế độ tiết kiệm Data'}
+    <>
+      {isMenuOpen && (
+        <div
+          className="fixed inset-0 top-16 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setIsMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+          isNavbarVisible ? 'translate-y-0' : '-translate-y-full'
+        } bg-dark-100/85 backdrop-blur-md border-b border-white/10 shadow-lg`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16 gap-2 lg:gap-3">
+            {/* Logo */}
+            <Link
+              to={appMode === 'movie' ? "/" : "/comics"}
+              className="flex items-center gap-2 group shrink-0 whitespace-nowrap"
             >
-              <FiZap size={13} className={dataSaverEnabled ? 'text-emerald-400' : 'text-gray-400'} />
-              <span>Data Saver</span>
-              <span className={`w-1.5 h-1.5 rounded-full ${dataSaverEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
-            </button>
-
-            {/* App Mode Switcher */}
-            <button
-              onClick={() => {
-                toggleAppMode();
-                navigate(appMode === 'movie' ? '/comics' : '/');
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${
+              <span className={`text-lg sm:text-xl lg:text-2xl font-extrabold tracking-tight bg-gradient-to-r ${
                 appMode === 'movie'
-                  ? 'bg-violet-500/15 border-violet-500/30 text-violet-300 hover:bg-violet-500/25'
-                  : 'bg-teal-500/15 border-teal-500/30 text-teal-300 hover:bg-teal-500/25'
-              }`}
-              title={`Chuyển sang chế độ ${appMode === 'movie' ? 'Đọc Truyện' : 'Xem Phim'}`}
-            >
-              {appMode === 'movie' ? <FiFilm size={14} /> : <FiBookOpen size={14} />}
-              <span>{appMode === 'movie' ? 'Xem Phim' : 'Đọc Truyện'}</span>
-            </button>
-          </div>
+                  ? 'from-violet-400 via-purple-400 to-indigo-400'
+                  : 'from-cyan-400 via-teal-400 to-emerald-400'
+              } bg-clip-text text-transparent group-hover:opacity-90 transition-opacity`}>
+                {appMode === 'movie' ? 'LowDetailMovies' : 'LowDetailComics'}
+              </span>
+            </Link>
 
-          {/* Desktop Search Bar */}
-          <form onSubmit={handleSearch} className="hidden lg:flex items-center flex-1 max-w-xs mx-2" role="search">
+            {/* Desktop Navigation Links */}
+            <div className="hidden md:flex items-center gap-3 lg:gap-5 text-sm font-medium whitespace-nowrap">
+              {appMode === 'movie' ? (
+                <>
+                  <Link
+                    to="/"
+                    className={`transition-colors py-1 ${
+                      location.pathname === '/' ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Trang Chủ
+                  </Link>
+                  <Link
+                    to="/movies"
+                    className={`transition-colors py-1 ${
+                      location.pathname.startsWith('/movies') ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Phim
+                  </Link>
+                  <Link
+                    to="/anime"
+                    className={`transition-colors py-1 ${
+                      location.pathname.startsWith('/anime') ? 'text-violet-400 font-semibold' : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Anime
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/comics"
+                    className={`transition-colors py-1 ${
+                      location.pathname === '/comics' && !location.search.includes('sort=latest')
+                        ? 'text-teal-400 font-semibold'
+                        : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Trang Chủ
+                  </Link>
+                  <Link
+                    to="/comics?sort=latest"
+                    className={`transition-colors py-1 ${
+                      location.pathname === '/comics' && location.search.includes('sort=latest')
+                        ? 'text-teal-400 font-semibold'
+                        : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Mới Cập Nhật
+                  </Link>
+                </>
+              )}
+
+              {/* Data Saver Badge */}
+              <button
+                type="button"
+                onClick={toggleDataSaver}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${
+                  dataSaverEnabled
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                }`}
+                title={dataSaverEnabled ? 'Chế độ tiết kiệm Data: ĐANG BẬT' : 'Bật chế độ tiết kiệm Data'}
+                aria-label="Chế độ tiết kiệm Data"
+              >
+                <FiZap size={13} className={dataSaverEnabled ? 'text-emerald-400' : 'text-gray-400'} />
+                <span className="hidden lg:inline">Data Saver</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${dataSaverEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+              </button>
+
+              {/* App Mode Segmented Switcher */}
+              <div
+                role="group"
+                aria-label="Chế độ nội dung"
+                className="inline-flex items-center p-0.5 rounded-full bg-white/5 border border-white/10"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode('movie')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                    appMode === 'movie'
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <FiFilm size={12} />
+                  <span>Phim</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode('comic')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                    appMode === 'comic'
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <FiBookOpen size={12} />
+                  <span>Truyện</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Desktop & Tablet Search Bar */}
+            <form onSubmit={handleSearch} className="hidden md:flex items-center flex-1 max-w-[180px] lg:max-w-xs mx-1 lg:mx-2" role="search">
             <div className="relative w-full" ref={desktopSearchRef}>
               <input
                 type="text"
@@ -475,8 +547,10 @@ function Navbar() {
 
         {/* Mobile Menu Drawer */}
         <div
-          className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
-            isMenuOpen ? 'max-h-[600px] opacity-100 py-3 border-t border-white/10' : 'max-h-0 opacity-0'
+          className={`md:hidden transition-all duration-300 ease-in-out ${
+            isMenuOpen
+              ? 'max-h-[85vh] opacity-100 py-3 border-t border-white/10 overflow-visible'
+              : 'max-h-0 opacity-0 overflow-hidden pointer-events-none'
           }`}
         >
           {/* Mobile Search Input */}
@@ -535,45 +609,62 @@ function Navbar() {
               <span>Data Saver</span>
             </button>
 
-            <button
-              onClick={() => {
-                toggleAppMode();
-                navigate(appMode === 'movie' ? '/comics' : '/');
-                setIsMenuOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
-                appMode === 'movie'
-                  ? 'bg-violet-500/15 border-violet-500/30 text-violet-300'
-                  : 'bg-teal-500/15 border-teal-500/30 text-teal-300'
-              }`}
+            <div
+              role="group"
+              aria-label="Chế độ nội dung"
+              className="inline-flex items-center p-0.5 rounded-full bg-white/5 border border-white/10"
             >
-              {appMode === 'movie' ? <FiFilm size={14} /> : <FiBookOpen size={14} />}
-              <span>{appMode === 'movie' ? 'Xem Phim' : 'Đọc Truyện'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchMode('movie')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                  appMode === 'movie' ? 'bg-violet-600 text-white shadow-sm' : 'text-gray-400'
+                }`}
+              >
+                <FiFilm size={12} />
+                <span>Phim</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchMode('comic')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                  appMode === 'comic' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-400'
+                }`}
+              >
+                <FiBookOpen size={12} />
+                <span>Truyện</span>
+              </button>
+            </div>
           </div>
 
           {/* Links */}
-          <div className="space-y-1 text-sm font-medium">
+          <div className="space-y-1 text-sm font-medium max-h-[55vh] overflow-y-auto">
             {appMode === 'movie' ? (
               <>
                 <Link
                   to="/"
                   onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
+                  className={`block py-2 px-2 rounded-lg transition-colors ${
+                    location.pathname === '/' ? 'bg-violet-500/15 text-violet-300 font-semibold' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Trang Chủ
                 </Link>
                 <Link
                   to="/movies"
                   onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
+                  className={`block py-2 px-2 rounded-lg transition-colors ${
+                    location.pathname.startsWith('/movies') ? 'bg-violet-500/15 text-violet-300 font-semibold' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Phim
                 </Link>
                 <Link
                   to="/anime"
                   onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
+                  className={`block py-2 px-2 rounded-lg transition-colors ${
+                    location.pathname.startsWith('/anime') ? 'bg-violet-500/15 text-violet-300 font-semibold' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Anime
                 </Link>
@@ -583,14 +674,22 @@ function Navbar() {
                 <Link
                   to="/comics"
                   onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
+                  className={`block py-2 px-2 rounded-lg transition-colors ${
+                    location.pathname === '/comics' && !location.search.includes('sort=latest')
+                      ? 'bg-teal-500/15 text-teal-300 font-semibold'
+                      : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Trang Chủ Truyện
                 </Link>
                 <Link
                   to="/comics?sort=latest"
                   onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
+                  className={`block py-2 px-2 rounded-lg transition-colors ${
+                    location.pathname === '/comics' && location.search.includes('sort=latest')
+                      ? 'bg-teal-500/15 text-teal-300 font-semibold'
+                      : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Mới Cập Nhật
                 </Link>
@@ -659,6 +758,7 @@ function Navbar() {
         </div>
       </div>
     </nav>
+    </>
   );
 }
 

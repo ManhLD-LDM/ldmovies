@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { FiArrowDown, FiArrowUp, FiBookOpen, FiHeart, FiSearch, FiX } from 'react-icons/fi';
+import { FiArrowDown, FiArrowUp, FiBookOpen, FiHeart, FiPlay, FiRefreshCw, FiSearch, FiX } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import { comicApi } from '../services/comicApi';
 import useAuthStore from '../stores/authStore';
+import useComicHistoryStore from '../stores/comicHistoryStore';
 import useFavoritesStore from '../stores/favoritesStore';
+import { FALLBACK_POSTER, stripHtmlAndDecode } from '../utils/textUtils';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
 const getChapterIdOrName = (chap) =>
@@ -22,15 +24,19 @@ function ComicDetailPage() {
   const [comic, setComic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [chapterSearch, setChapterSearch] = useState('');
   const [chapterSortOrder, setChapterSortOrder] = useState('asc'); // 'asc' | 'desc'
 
+  const cleanDescription = stripHtmlAndDecode(comic?.content || comic?.description);
+
   useDocumentTitle(
     comic?.name ? `Truyện ${comic.name}` : 'Chi Tiết Truyện Tranh',
-    comic?.description ? comic.description.replace(/<[^>]*>/g, '').slice(0, 160) : undefined
+    cleanDescription ? cleanDescription.slice(0, 160) : undefined
   );
 
   const { isAuthenticated } = useAuthStore();
+  const { comicHistory, fetchComicHistory } = useComicHistoryStore();
   const {
     isComicFavorited,
     fetchFavoriteComics,
@@ -41,26 +47,39 @@ function ComicDetailPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchFavoriteComics();
+      fetchComicHistory();
     }
-  }, [isAuthenticated, fetchFavoriteComics]);
+  }, [isAuthenticated, fetchFavoriteComics, fetchComicHistory]);
 
   useEffect(() => {
+    let isCancelled = false;
     const fetchComicDetails = async () => {
       try {
         setLoading(true);
+        setError(null);
         setChapterSearch('');
         const data = await comicApi.getComicDetails(slug);
+        if (isCancelled) return;
         if (data.status === 'success') {
           setComic(data.data);
+        } else {
+          setError('Không tìm thấy thông tin truyện');
         }
       } catch (err) {
-        setError('Không thể tải thông tin truyện');
+        if (!isCancelled) {
+          setError('Không thể tải thông tin truyện');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
     if (slug) fetchComicDetails();
-  }, [slug]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [slug, retryCount]);
 
   const isFavorited = comic
     ? isComicFavorited(comic.slug) || isComicFavorited(comic._id)
@@ -115,7 +134,7 @@ function ComicDetailPage() {
 
   if (loading) {
     return (
-      <div className="pt-24 px-4 sm:px-8 lg:px-12 max-w-[1200px] mx-auto min-h-screen text-white pb-24 font-sans">
+      <div className="pt-6 px-4 sm:px-8 lg:px-12 max-w-[1200px] mx-auto min-h-screen text-white pb-24 font-sans">
         <div className="flex flex-col md:flex-row gap-12 md:gap-16 mb-24 animate-pulse">
           {/* Skeleton poster */}
           <div className="w-full md:w-[320px] flex-shrink-0">
@@ -151,8 +170,18 @@ function ComicDetailPage() {
 
   if (error || !comic) {
     return (
-      <div className="pt-24 px-6 max-w-5xl mx-auto min-h-screen text-white flex justify-center items-center">
-        <p className="text-zinc-400">{error || 'Không tìm thấy truyện'}</p>
+      <div className="pt-6 px-6 max-w-5xl mx-auto min-h-[70vh] text-white flex flex-col justify-center items-center gap-4">
+        <p className="text-zinc-300 text-lg">{error || 'Không tìm thấy truyện'}</p>
+        {error && (
+          <button
+            type="button"
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-full font-semibold text-sm hover:bg-zinc-200 transition-colors"
+          >
+            <FiRefreshCw size={15} />
+            <span>Thử lại</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -160,11 +189,12 @@ function ComicDetailPage() {
   const chapters = comic.chapters || [];
   const firstChapter = chapters[0];
   const latestChapter = chapters[chapters.length - 1];
+  const readingHistoryItem = comicHistory.find((item) => item.slug === comic.slug);
   const authorText = comic.author?.filter(Boolean).join(', ') || 'Đang cập nhật';
   const statusText = STATUS_LABELS[comic.status] || comic.status || 'Đang cập nhật';
 
   return (
-    <div className="pt-24 px-4 sm:px-8 lg:px-12 max-w-[1200px] mx-auto min-h-screen text-white pb-24 font-sans">
+    <div className="pt-6 px-4 sm:px-8 lg:px-12 max-w-[1200px] mx-auto min-h-screen text-white pb-24 font-sans">
 
       {/* Editorial Split Header */}
       <div className="flex flex-col md:flex-row gap-12 md:gap-16 mb-24">
@@ -173,9 +203,13 @@ function ComicDetailPage() {
         <div className="w-full md:w-[320px] flex-shrink-0">
           <div className="aspect-[2/3] w-full bg-zinc-900 rounded-lg overflow-hidden relative">
             <img
-              src={comic.thumb_url}
+              src={comic.thumb_url || FALLBACK_POSTER}
               alt={comic.name}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = FALLBACK_POSTER;
+              }}
             />
             {/* Subtle inner border for premium feel */}
             <div className="absolute inset-0 border border-white/10 rounded-lg pointer-events-none"></div>
@@ -224,14 +258,23 @@ function ComicDetailPage() {
           </div>
 
           <div className="mb-12 max-w-2xl">
-            <div
-              className="text-zinc-400 leading-relaxed font-light text-base md:text-lg"
-              dangerouslySetInnerHTML={{ __html: comic.content }}
-            ></div>
+            <p className="text-zinc-400 leading-relaxed font-light text-base md:text-lg whitespace-pre-line">
+              {cleanDescription || 'Đang cập nhật mô tả...'}
+            </p>
           </div>
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3 sm:gap-4 mt-auto">
+            {readingHistoryItem?.chapterId && (
+              <Link
+                to={`/comics/${comic.slug}/chapter/${readingHistoryItem.chapterId}`}
+                className="px-7 py-4 bg-primary-600 hover:bg-primary-500 text-white rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide shadow-lg shadow-primary-600/30"
+              >
+                <FiPlay size={16} className="fill-current" />
+                <span>Đọc tiếp Ch. {readingHistoryItem.chapterName}</span>
+              </Link>
+            )}
+
             {chapters.length > 0 && (
               <>
                 <Link
@@ -255,11 +298,11 @@ function ComicDetailPage() {
               onClick={handleToggleFavorite}
               className={`px-7 py-4 rounded-full font-semibold transition-transform hover:scale-[1.02] flex items-center gap-2 text-sm tracking-wide border ${
                 isFavorited
-                  ? 'bg-transparent text-white border-white/20'
+                  ? 'bg-primary-600/20 text-primary-300 border-primary-500/50'
                   : 'bg-zinc-900 text-zinc-300 border-white/10 hover:border-white/30'
               }`}
             >
-              <FiHeart className={isFavorited ? 'fill-white text-white' : ''} />
+              <FiHeart className={isFavorited ? 'fill-current text-primary-400' : ''} />
               {isFavorited ? 'Đã lưu' : 'Lưu truyện'}
             </button>
           </div>

@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
-import useAppStore from './stores/appStore';
 
 // Lazy load pages for better performance
 const AnimeDetailPage = lazy(() => import('./pages/AnimeDetailPage'));
@@ -18,6 +17,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Lazy load comic pages
 const ComicHomePage = lazy(() => import('./pages/ComicHomePage'));
@@ -43,16 +43,14 @@ function ScrollToTop() {
 }
 
 function App() {
-  const { appMode } = useAppStore();
-
   return (
     <ErrorBoundary>
       <ScrollToTop />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Layout />}>
-            {/* Main index routes dynamically based on appMode */}
-            <Route index element={appMode === 'movie' ? <HomePage /> : <Navigate to="/comics" replace />} />
+            {/* Root always renders Movie HomePage */}
+            <Route index element={<HomePage />} />
             
             {/* Auth and User routes */}
             <Route path="login" element={<LoginPage />} />
@@ -76,6 +74,9 @@ function App() {
               <Route path=":slug" element={<ComicDetailPage />} />
               <Route path=":slug/chapter/:chapterId" element={<ComicReaderPage />} />
             </Route>
+
+            {/* 404 Fallback */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
       </Suspense>

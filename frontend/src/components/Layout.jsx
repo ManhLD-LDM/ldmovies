@@ -8,7 +8,7 @@ import Navbar from './Navbar';
 
 function Layout() {
   const location = useLocation();
-  const { appMode, setAppMode } = useAppStore();
+  const { setAppMode } = useAppStore();
   const { isAuthenticated } = useAuthStore();
   const { fetchHistoryFromBackend } = useWatchHistoryStore();
 
@@ -22,19 +22,16 @@ function Layout() {
   useEffect(() => {
     const path = location.pathname;
     if (path.startsWith('/comics')) {
-      if (appMode !== 'comic') {
-        setAppMode('comic');
-      }
+      setAppMode('comic');
     } else if (
+      path === '/' ||
       path.startsWith('/movies') ||
       path.startsWith('/anime') ||
       path.startsWith('/search')
     ) {
-      if (appMode !== 'movie') {
-        setAppMode('movie');
-      }
+      setAppMode('movie');
     }
-  }, [location.pathname, appMode, setAppMode]);
+  }, [location.pathname, setAppMode]);
 
   const isComicReader = /^\/comics\/[^/]+\/chapter\/[^/]+/.test(location.pathname);
 

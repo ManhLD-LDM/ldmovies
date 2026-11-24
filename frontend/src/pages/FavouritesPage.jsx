@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { FiHeart, FiFilm, FiTv, FiBook, FiX } from 'react-icons/fi';
 import useAuthStore from '../stores/authStore';
 import useFavoritesStore from '../stores/favoritesStore';
+import useDocumentTitle from '../utils/useDocumentTitle';
 
 // Poster fallback SVG - không cần network request
 const FALLBACK_POSTER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='300' viewBox='0 0 200 300'%3E%3Crect fill='%231E1E28' width='200' height='300'/%3E%3Ctext x='100' y='160' font-family='Arial' font-size='48' fill='%234B4B6A' text-anchor='middle'%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E`;
@@ -126,6 +127,7 @@ function FavoriteGrid({ items, tab, onRemove, navigate }) {
 }
 
 function FavouritesPage() {
+  useDocumentTitle('Danh Sách Yêu Thích');
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
   const {
@@ -138,7 +140,9 @@ function FavouritesPage() {
     removeFavoriteMovie,
     removeFavoriteAnime,
     removeFavoriteComic,
-    isLoading,
+    loadingMovies,
+    loadingAnime,
+    loadingComics,
   } = useFavoritesStore();
 
   const [currentTab, setCurrentTab] = useState('movies');
@@ -157,6 +161,12 @@ function FavouritesPage() {
     favoriteComics,
   };
 
+  const tabLoadingMap = {
+    movies: loadingMovies,
+    anime: loadingAnime,
+    comics: loadingComics,
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       toast.info('Vui lòng đăng nhập để xem danh sách yêu thích');
@@ -166,7 +176,7 @@ function FavouritesPage() {
     fetchFavoriteMovies();
     fetchFavoriteAnime();
     fetchFavoriteComics();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, fetchFavoriteMovies, fetchFavoriteAnime, fetchFavoriteComics]);
 
   const handleRemove = async (tab, id) => {
     const handler = removeHandlers[tab.removeKey];
@@ -183,9 +193,10 @@ function FavouritesPage() {
 
   const activeTabConfig = TABS_CONFIG.find((t) => t.key === currentTab);
   const activeItems = itemsData[activeTabConfig.itemsKey] || [];
+  const isTabLoading = tabLoadingMap[currentTab];
 
   return (
-    <div className="container mx-auto px-4 py-8 pt-24 min-h-screen">
+    <div className="container mx-auto px-4 py-8 pt-6 min-h-screen">
       {/* Tiêu đề trang */}
       <div className="flex items-center gap-3 mb-8">
         <FiHeart className="text-primary-500" size={32} />
@@ -193,7 +204,7 @@ function FavouritesPage() {
       </div>
 
       {/* Tabs điều hướng */}
-      <div className="flex gap-1 mb-8 border-b border-white/10">
+      <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto whitespace-nowrap scrollbar-hide">
         {TABS_CONFIG.map((tab) => {
           const Icon = tab.icon;
           const count = (itemsData[tab.itemsKey] || []).length;
@@ -201,7 +212,7 @@ function FavouritesPage() {
             <button
               key={tab.key}
               onClick={() => setCurrentTab(tab.key)}
-              className={`flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
+              className={`shrink-0 flex items-center gap-2 px-5 py-3 font-medium transition-all rounded-t-lg ${
                 currentTab === tab.key
                   ? 'text-primary-400 border-b-2 border-primary-500 bg-primary-500/5'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -224,7 +235,7 @@ function FavouritesPage() {
       </div>
 
       {/* Nội dung tab */}
-      {isLoading ? (
+      {isTabLoading ? (
         <SkeletonGrid />
       ) : activeItems.length === 0 ? (
         <EmptyState
