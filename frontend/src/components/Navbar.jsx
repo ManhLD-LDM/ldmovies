@@ -189,7 +189,7 @@ function Navbar() {
           } else {
             const response = await kkphimApi.searchAnime(searchQuery.trim());
             if (isCancelled) return;
-            setSuggestions(response.data.slice(0, 5));
+            setSuggestions(response.data.slice(0, 8));
           }
           setShowSuggestions(true);
           setSelectedIndex(-1);

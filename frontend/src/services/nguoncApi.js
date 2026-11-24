@@ -110,11 +110,29 @@ const transformNguonCItem = (item, fallbackType = 'single') => {
 
 export const nguoncApi = {
   search: async (keyword) => {
-    const res = await getWithCache('/films/search', { params: { keyword } });
-    const items = res.data?.items || [];
+    const res = await getWithCache('/films/search', { params: { keyword, page: 1 } });
+    let items = res.data?.items || [];
+    const paginate = res.data?.paginate || {};
+    const totalPages = Math.min(Number(paginate.total_page) || 1, 3);
+
+    if (totalPages > 1) {
+      const extraPages = [];
+      for (let p = 2; p <= totalPages; p += 1) {
+        extraPages.push(
+          getWithCache('/films/search', { params: { keyword, page: p } })
+            .then((r) => r.data?.items || [])
+            .catch(() => [])
+        );
+      }
+      const extraResults = await Promise.all(extraPages);
+      for (const list of extraResults) {
+        items = items.concat(list);
+      }
+    }
+
     return {
       data: items.map((item) => transformNguonCItem(item, 'single')),
-      paginate: res.data?.paginate || {},
+      paginate,
     };
   },
 
