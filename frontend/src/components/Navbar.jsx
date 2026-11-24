@@ -428,8 +428,8 @@ function Navbar() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery.trim().length > 1 && setShowSuggestions(true)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Tìm kiếm phim, anime, truyện..."
-                aria-label="Tìm kiếm phim, anime hoặc truyện tranh"
+                placeholder={appMode === 'comic' ? 'Tìm kiếm truyện tranh...' : 'Tìm kiếm phim, anime...'}
+                aria-label={appMode === 'comic' ? 'Tìm kiếm truyện tranh' : 'Tìm kiếm phim hoặc anime'}
                 className="w-full px-3.5 py-1.5 pl-9 pr-9 bg-white/5 border border-white/10 rounded-full text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500/60 focus:bg-white/10 transition-all backdrop-blur-sm"
               />
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} aria-hidden="true" />
@@ -500,7 +500,7 @@ function Navbar() {
                       className="flex items-center gap-2.5 px-4 py-2.5 text-gray-200 hover:text-white hover:bg-white/10 transition-colors"
                     >
                       <FiClock size={16} />
-                      <span>Lịch Sử Xem</span>
+                      <span>{appMode === 'comic' ? 'Lịch Sử Đọc' : 'Lịch Sử Xem'}</span>
                     </Link>
                     <Link
                       to="/favourites"
@@ -508,7 +508,7 @@ function Navbar() {
                       className="flex items-center gap-2.5 px-4 py-2.5 text-gray-200 hover:text-white hover:bg-white/10 transition-colors"
                     >
                       <FiHeart size={16} />
-                      <span>Yêu Thích</span>
+                      <span>{appMode === 'comic' ? 'Truyện Yêu Thích' : 'Yêu Thích'}</span>
                     </Link>
                     <div className="border-t border-white/10 my-1"></div>
                     <button
@@ -567,8 +567,8 @@ function Navbar() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery.trim().length > 1 && setShowSuggestions(true)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Tìm kiếm phim, anime, truyện..."
-                aria-label="Tìm kiếm phim, anime hoặc truyện tranh"
+                placeholder={appMode === 'comic' ? 'Tìm kiếm truyện tranh...' : 'Tìm kiếm phim, anime...'}
+                aria-label={appMode === 'comic' ? 'Tìm kiếm truyện tranh' : 'Tìm kiếm phim hoặc anime'}
                 className="w-full px-4 py-2 pl-9 pr-10 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 text-sm focus:outline-none focus:border-violet-500"
               />
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} aria-hidden="true" />
@@ -719,7 +719,7 @@ function Navbar() {
                     className="flex items-center gap-2 py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
                   >
                     <FiClock size={16} />
-                    <span>Lịch Sử Xem</span>
+                    <span>{appMode === 'comic' ? 'Lịch Sử Đọc' : 'Lịch Sử Xem'}</span>
                   </Link>
                   <Link
                     to="/favourites"
@@ -727,7 +727,7 @@ function Navbar() {
                     className="flex items-center gap-2 py-2 px-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg"
                   >
                     <FiHeart size={16} />
-                    <span>Yêu Thích</span>
+                    <span>{appMode === 'comic' ? 'Truyện Yêu Thích' : 'Yêu Thích'}</span>
                   </Link>
                   <button
                     onClick={() => {

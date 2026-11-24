@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import useAppStore from '../stores/appStore';
 
 function Footer() {
-    const { setAppMode } = useAppStore();
+    const { appMode, setAppMode } = useAppStore();
+    const isComicMode = appMode === 'comic';
 
     return (
         <footer className="bg-dark-100 border-t border-dark-300 py-8 mt-auto">
@@ -11,12 +12,25 @@ function Footer() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     {/* Logo & Mô tả */}
                     <div className="col-span-1 md:col-span-2">
-                        <Link to="/" onClick={() => setAppMode('movie')} className="flex items-center space-x-2 mb-4">
-                            <span className="text-2xl font-black bg-gradient-to-r from-violet-400 via-purple-500 to-violet-600 bg-clip-text text-transparent">LowDetailMovies</span>
+                        <Link
+                            to={isComicMode ? '/comics' : '/'}
+                            onClick={() => setAppMode(isComicMode ? 'comic' : 'movie')}
+                            className="flex items-center space-x-2 mb-4"
+                        >
+                            <span
+                                className={`text-2xl font-black bg-gradient-to-r ${
+                                    isComicMode
+                                        ? 'from-cyan-400 via-teal-400 to-emerald-400'
+                                        : 'from-violet-400 via-purple-500 to-violet-600'
+                                } bg-clip-text text-transparent`}
+                            >
+                                {isComicMode ? 'LowDetailComics' : 'LowDetailMovies'}
+                            </span>
                         </Link>
                         <p className="text-gray-400 text-sm">
-                            Nền tảng xem phim và anime trực tuyến.
-                            Thưởng thức nội dung yêu thích mọi lúc, mọi nơi.
+                            {isComicMode
+                                ? 'Nền tảng đọc truyện tranh trực tuyến miễn phí. Thưởng thức truyện yêu thích mọi lúc, mọi nơi.'
+                                : 'Nền tảng xem phim và anime trực tuyến. Thưởng thức nội dung yêu thích mọi lúc, mọi nơi.'}
                         </p>
                     </div>
 
