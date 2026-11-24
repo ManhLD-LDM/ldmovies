@@ -1,7 +1,10 @@
 import express from 'express';
-import { getLatestComics, getComicDetails, getComicChapter, getGenres, getComicsByGenre, searchComics } from '../controllers/comicController.js';
+import { getComicSourceStatus, getLatestComics, getComicDetails, getComicChapter, getGenres, getComicsByGenre, searchComics } from '../controllers/comicController.js';
 
 const router = express.Router();
+
+// GET /api/comics/source-status
+router.get('/source-status', getComicSourceStatus);
 
 // GET /api/comics/latest?page=1
 router.get('/latest', getLatestComics);

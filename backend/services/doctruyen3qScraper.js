@@ -1,15 +1,25 @@
 import axios from 'axios';
+import https from 'https';
 
 export const DOCTRUYEN3Q_BASE_URL = (
   process.env.COMIC_SOURCE_URL || 'https://doctruyen3qhub.club'
 ).replace(/\/+$/, '');
 
+const ipv4Agent = new https.Agent({ family: 4 });
+
 const REQUEST_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
   Referer: `${DOCTRUYEN3Q_BASE_URL}/`,
+  'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'same-origin',
+  'upgrade-insecure-requests': '1',
 };
 
 const HTML_ENTITIES = {
@@ -128,12 +138,68 @@ function cleanChapterName(raw = '') {
 }
 
 async function fetchHtml(url) {
-  const response = await axios.get(url, {
-    timeout: 15000,
-    headers: REQUEST_HEADERS,
-    responseType: 'text',
-  });
-  return response.data;
+  let lastErr = null;
+
+  // 1. Ưu tiên native fetch (undici trên Node 24)
+  try {
+    const resp = await fetch(url, {
+      headers: REQUEST_HEADERS,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await resp.text();
+    if (resp.ok && text) {
+      return text;
+    }
+    const err = new Error(`Upstream HTTP ${resp.status}`);
+    err.upstreamStatus = resp.status;
+    err.upstreamSnippet = text.slice(0, 200);
+    lastErr = err;
+  } catch (fetchErr) {
+    lastErr = fetchErr;
+  }
+
+  // 2. Fallback qua axios ép IPv4
+  try {
+    const response = await axios.get(url, {
+      timeout: 15000,
+      headers: REQUEST_HEADERS,
+      responseType: 'text',
+      httpsAgent: ipv4Agent,
+    });
+    return response.data;
+  } catch (axiosErr) {
+    if (axiosErr.response) {
+      axiosErr.upstreamStatus = axiosErr.response.status;
+      axiosErr.upstreamSnippet = String(axiosErr.response.data || '').slice(0, 200);
+    }
+    throw axiosErr.upstreamStatus ? axiosErr : (lastErr || axiosErr);
+  }
+}
+
+export async function checkDocTruyen3QHealth() {
+  try {
+    const html = await fetchHtml(`${DOCTRUYEN3Q_BASE_URL}/`);
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? stripTags(titleMatch[1]) : '';
+    const isCloudflareChallenge =
+      /just a moment|cf-turnstile|challenge-platform/i.test(html) &&
+      !html.includes('item-manga');
+    return {
+      ok: !isCloudflareChallenge && html.includes('item-manga'),
+      status: 200,
+      length: html.length,
+      title,
+      isCloudflareChallenge,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: err.upstreamStatus || err.response?.status || 0,
+      error: err.message,
+      isCloudflareChallenge: false,
+    };
+  }
 }
 
 function parseComicListPage(html, page = 1) {
