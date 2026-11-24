@@ -48,9 +48,9 @@ export const proxyImage = async (req, res) => {
       return res.status(400).json({ message: 'URL không hợp lệ' });
     }
 
-    // SSRF Protection: Whitelist trusted image domains only
-    if (!isAllowedHost(target.hostname)) {
-      return res.status(403).json({ message: 'Domain nguồn không được phép' });
+    // SSRF Protection: HTTPS only + whitelist trusted image domains
+    if (target.protocol !== 'https:' || !isAllowedHost(target.hostname)) {
+      return res.status(403).json({ message: 'Domain hoặc giao thức nguồn không được phép' });
     }
 
     const width = Math.min(Math.max(parseInt(w, 10) || 720, 100), 1280);
@@ -109,6 +109,7 @@ export const proxyImage = async (req, res) => {
         responseType: 'arraybuffer',
         timeout: 20000,
         maxContentLength: 15 * 1024 * 1024,
+        maxRedirects: 0,
         headers: relaySecret ? { 'x-relay-secret': relaySecret } : {},
       });
     } else {
@@ -117,6 +118,7 @@ export const proxyImage = async (req, res) => {
           responseType: 'arraybuffer',
           timeout: 15000,
           maxContentLength: 15 * 1024 * 1024, // 15MB limit
+          maxRedirects: 0,
           headers: upstreamHeaders,
         });
       } catch (fetchErr) {
@@ -126,6 +128,7 @@ export const proxyImage = async (req, res) => {
             responseType: 'arraybuffer',
             timeout: 15000,
             maxContentLength: 15 * 1024 * 1024,
+            maxRedirects: 0,
             headers: upstreamHeaders,
           });
         } else {
