@@ -10,8 +10,8 @@ import {
   scrapeSearchComics,
 } from '../services/doctruyen3qScraper.js';
 
-// Cache mặc định 5 phút cho danh sách mới, 10 phút cho chi tiết truyện, 24h cho chương
-const myCache = new NodeCache({ stdTTL: 600, checkperiod: 620 });
+// Cache mặc định 5 phút cho danh sách mới, 10 phút cho chi tiết truyện, 24h cho chương (giới hạn maxKeys tránh tràn RAM 512MB)
+const myCache = new NodeCache({ stdTTL: 600, checkperiod: 120, maxKeys: 150, useClones: false });
 
 const getRelayConfig = () => ({
   relayUrl: (process.env.COMIC_RELAY_URL || '').replace(/\/+$/, ''),

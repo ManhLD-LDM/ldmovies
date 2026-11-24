@@ -35,7 +35,7 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
-const relayCache = new NodeCache({ stdTTL: 600, checkperiod: 620 });
+const relayCache = new NodeCache({ stdTTL: 600, checkperiod: 120, maxKeys: 200, useClones: false });
 const ipv4Agent = new https.Agent({ family: 4 });
 
 const RAW_IMG_ALLOWED = (hostname = '') =>

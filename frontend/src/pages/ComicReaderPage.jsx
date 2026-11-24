@@ -102,18 +102,32 @@ function ComicReaderPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Fetch thông tin truyện theo slug (chỉ gọi lại khi đổi truyện, không gọi lại mỗi khi chuyển chương)
   useEffect(() => {
     let isCancelled = false;
-    const fetchChapterAndComic = async () => {
+    if (!slug) return undefined;
+    comicApi
+      .getComicDetails(slug)
+      .then((cData) => {
+        if (!isCancelled && cData?.status === 'success') {
+          setComicData(cData.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isCancelled = true;
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchChapter = async () => {
       try {
         setLoading(true);
         setError(null);
         setFailedImages({});
         setScrollProgress(0);
-        const [chapData, cData] = await Promise.all([
-          comicApi.getComicChapter(chapterId),
-          comicApi.getComicDetails(slug)
-        ]);
+        const chapData = await comicApi.getComicChapter(chapterId);
 
         if (isCancelled) return;
 
@@ -121,10 +135,6 @@ function ComicReaderPage() {
           setChapterData(chapData.data);
         } else {
           throw new Error('Chapter not found');
-        }
-
-        if (cData.status === 'success') {
-          setComicData(cData.data);
         }
       } catch (err) {
         if (!isCancelled) {
@@ -136,7 +146,7 @@ function ComicReaderPage() {
         }
       }
     };
-    if (chapterId && slug) fetchChapterAndComic();
+    if (chapterId && slug) fetchChapter();
     return () => {
       isCancelled = true;
     };
@@ -239,11 +249,13 @@ function ComicReaderPage() {
           const rawUrl = img.image_file?.startsWith('http')
             ? img.image_file
             : `${domain_cdn}/${imagePath}/${img.image_file}`;
-          const proxyUrl = `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&w=${targetWidth}&q=${targetQuality}`;
+          const proxyUrl = dataSaver
+            ? `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&w=${targetWidth}&q=${targetQuality}`
+            : `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&raw=1`;
           const isFailed = failedImages[index];
 
           return (
-            <div key={`${chapterId}-${index}`} className="w-full relative flex items-center justify-center bg-black min-h-[260px]">
+            <div key={`${chapterId}-${index}`} className="w-full relative flex items-center justify-center bg-black min-h-[600px]">
               {isFailed ? (
                 <div className="py-12 px-4 text-center flex flex-col items-center gap-3 border border-white/10 rounded-xl my-4 bg-zinc-950 w-full max-w-md">
                   <p className="text-xs text-zinc-400">Không thể tải trang {index + 1}</p>
