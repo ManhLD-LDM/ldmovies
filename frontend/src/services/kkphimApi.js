@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { nguoncApi, NGUONC_SLUG_PREFIX } from './nguoncApi.js';
 
-// PhimAPI - Anime Vietsub API
+// PhimAPI - Primary Movie & Anime API (merged with NguonC)
 const PHIMAPI_BASE_URL = 'https://phimapi.com';
 const CDN_IMAGE_URL = 'https://phimimg.com';
 
@@ -45,6 +46,29 @@ export const toCategorySlug = (str = '') =>
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
+
+// Gộp và khử trùng lặp danh sách phim từ KKPhim (ưu tiên) và NguonC
+function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
+  const seenSlugs = new Set();
+  const seenTitles = new Set();
+  const merged = [];
+
+  const addItem = (item) => {
+    if (!item) return;
+    const rawSlug = String(item.rawSlug || item.slug || '').replace(/^nc--/, '');
+    const titleKey = `${toCategorySlug(item.name || '')}|${item.year || ''}`;
+    if (rawSlug && seenSlugs.has(rawSlug)) return;
+    if (item.name && seenTitles.has(titleKey)) return;
+
+    if (rawSlug) seenSlugs.add(rawSlug);
+    if (item.name) seenTitles.add(titleKey);
+    merged.push(item);
+  };
+
+  primaryItems.forEach(addItem);
+  secondaryItems.forEach(addItem);
+  return merged;
+}
 
 // Transform data to consistent format
 const transformAnime = (item) => ({
@@ -99,38 +123,56 @@ const CATEGORIES = [
 ];
 
 export const kkphimApi = {
-  // Get latest updated anime (newest first)
+  // Get latest updated anime (newest first) - KKPhim + NguonC
   getLatestAnime: async (page = 1, limit = 24) => {
-    const response = await getWithCache(`/v1/api/danh-sach/hoat-hinh`, {
-      params: { page, limit, sort_field: 'year', sort_type: 'desc' },
-    });
-    const data = response.data?.data?.items;
+    const [kkRes, ncRes] = await Promise.allSettled([
+      getWithCache(`/v1/api/danh-sach/hoat-hinh`, {
+        params: { page, limit, sort_field: 'year', sort_type: 'desc' },
+      }),
+      nguoncApi.getAnime(page),
+    ]);
+    const kkItems =
+      kkRes.status === 'fulfilled'
+        ? kkRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || []
+        : [];
+    const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
+    const merged = mergeUniqueContent(kkItems, ncItems);
     return {
-      data: data?.map(item => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [],
-      pagination: response.data?.data?.params?.pagination || {},
+      data: merged.slice(0, limit),
+      pagination: kkRes.status === 'fulfilled' ? kkRes.value.data?.data?.params?.pagination || {} : {},
     };
   },
 
-  // Get latest updated movies (newest first)
+  // Get latest updated movies (newest first) - KKPhim + NguonC
   getLatestMovies: async (page = 1, limit = 24) => {
     try {
-      // Fetch both phim lẻ and phim bộ
-      const [moviesRes, seriesRes] = await Promise.all([
+      const [moviesRes, seriesRes, ncMoviesRes, ncSeriesRes] = await Promise.allSettled([
         getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'year', sort_type: 'desc' } }),
         getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'year', sort_type: 'desc' } }),
+        nguoncApi.getMovies(page),
+        nguoncApi.getTVSeries(page),
       ]);
-      
-      const moviesData = moviesRes.data?.data?.items?.map(item => ({ ...transformAnime(item), type: 'single', modifiedTime: item.modified?.time })) || [];
-      const seriesData = seriesRes.data?.data?.items?.map(item => ({ ...transformAnime(item), type: 'series', modifiedTime: item.modified?.time })) || [];
-      
-      // Combine and sort by modified.time descending
-      const combined = [...moviesData, ...seriesData].sort((a, b) => {
-        return new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0);
-      });
-      
+
+      const moviesData =
+        moviesRes.status === 'fulfilled'
+          ? moviesRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: 'single', modifiedTime: item.modified?.time })) || []
+          : [];
+      const seriesData =
+        seriesRes.status === 'fulfilled'
+          ? seriesRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: 'series', modifiedTime: item.modified?.time })) || []
+          : [];
+      const ncMovies = ncMoviesRes.status === 'fulfilled' ? ncMoviesRes.value.data || [] : [];
+      const ncSeries = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.data || [] : [];
+
+      const kkCombined = [...moviesData, ...seriesData].sort(
+        (a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0)
+      );
+      const ncCombined = [...ncMovies, ...ncSeries];
+      const merged = mergeUniqueContent(kkCombined, ncCombined);
+
       return {
-        data: combined.slice(0, limit),
-        pagination: moviesRes.data?.data?.params?.pagination || {},
+        data: merged.slice(0, limit),
+        pagination: moviesRes.status === 'fulfilled' ? moviesRes.value.data?.data?.params?.pagination || {} : {},
       };
     } catch (error) {
       console.error('Error fetching latest movies:', error);
@@ -138,60 +180,80 @@ export const kkphimApi = {
     }
   },
 
-  // Get all anime (paginated)
+  // Get all anime (paginated) - KKPhim + NguonC
   getAllAnime: async (page = 1, limit = 24) => {
-    const response = await getWithCache(`/v1/api/danh-sach/hoat-hinh`, {
-      params: { page, limit },
-    });
-    const data = response.data?.data;
+    const [kkRes, ncRes] = await Promise.allSettled([
+      getWithCache(`/v1/api/danh-sach/hoat-hinh`, { params: { page, limit } }),
+      nguoncApi.getAnime(page),
+    ]);
+    const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
+    const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [];
+    const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
+    const merged = mergeUniqueContent(kkItems, ncItems);
     return {
-      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [],
-      pagination: data?.params?.pagination || {},
+      data: merged.slice(0, limit),
+      pagination: kkData?.params?.pagination || {},
     };
   },
 
-  // Get all movies - phim lẻ (single movies)
+  // Get all movies - phim lẻ (single movies) - KKPhim + NguonC
   getAllMovies: async (page = 1, limit = 24) => {
-    const response = await getWithCache(`/v1/api/danh-sach/phim-le`, {
-      params: { page, limit },
-    });
-    const data = response.data?.data;
+    const [kkRes, ncRes] = await Promise.allSettled([
+      getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit } }),
+      nguoncApi.getMovies(page),
+    ]);
+    const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
+    const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'single' })) || [];
+    const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
+    const merged = mergeUniqueContent(kkItems, ncItems);
     return {
-      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'single' })) || [],
-      pagination: data?.params?.pagination || {},
+      data: merged.slice(0, limit),
+      pagination: kkData?.params?.pagination || {},
     };
   },
 
-  // Get all TV series - phim bộ
+  // Get all TV series - phim bộ - KKPhim + NguonC
   getAllTVSeries: async (page = 1, limit = 24) => {
-    const response = await getWithCache(`/v1/api/danh-sach/phim-bo`, {
-      params: { page, limit },
-    });
-    const data = response.data?.data;
+    const [kkRes, ncRes] = await Promise.allSettled([
+      getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit } }),
+      nguoncApi.getTVSeries(page),
+    ]);
+    const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
+    const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'series' })) || [];
+    const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
+    const merged = mergeUniqueContent(kkItems, ncItems);
     return {
-      data: data?.items?.map(item => ({ ...transformAnime(item), type: item.type || 'series' })) || [],
-      pagination: data?.params?.pagination || {},
+      data: merged.slice(0, limit),
+      pagination: kkData?.params?.pagination || {},
     };
   },
 
-  // Get all movies (both phim lẻ and phim bộ combined)
+  // Get all movies (both phim lẻ and phim bộ combined) - KKPhim + NguonC
   getAllMoviesAndSeries: async (page = 1, limit = 24) => {
     try {
-      // Fetch both movies and TV series
-      const [moviesRes, seriesRes] = await Promise.all([
+      const [moviesRes, seriesRes, ncMoviesRes, ncSeriesRes] = await Promise.allSettled([
         getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit: Math.ceil(limit / 2) } }),
         getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit: Math.ceil(limit / 2) } }),
+        nguoncApi.getMovies(page),
+        nguoncApi.getTVSeries(page),
       ]);
-      
-      const moviesData = moviesRes.data?.data?.items?.map(item => ({ ...transformAnime(item), type: 'single' })) || [];
-      const seriesData = seriesRes.data?.data?.items?.map(item => ({ ...transformAnime(item), type: 'series' })) || [];
-      
-      // Combine and shuffle
-      const combined = [...moviesData, ...seriesData];
-      
+
+      const moviesData =
+        moviesRes.status === 'fulfilled'
+          ? moviesRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: 'single' })) || []
+          : [];
+      const seriesData =
+        seriesRes.status === 'fulfilled'
+          ? seriesRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: 'series' })) || []
+          : [];
+      const ncMovies = ncMoviesRes.status === 'fulfilled' ? ncMoviesRes.value.data || [] : [];
+      const ncSeries = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.data || [] : [];
+
+      const merged = mergeUniqueContent([...moviesData, ...seriesData], [...ncMovies, ...ncSeries]);
+
       return {
-        data: combined,
-        pagination: moviesRes.data?.data?.params?.pagination || {},
+        data: merged.slice(0, limit),
+        pagination: moviesRes.status === 'fulfilled' ? moviesRes.value.data?.data?.params?.pagination || {} : {},
       };
     } catch (error) {
       console.error('Error fetching movies and series:', error);
@@ -199,74 +261,87 @@ export const kkphimApi = {
     }
   },
 
-  // Search anime by keyword
+  // Search movies & anime by keyword (KKPhim + NguonC parallel)
   searchAnime: async (keyword) => {
-    const response = await getWithCache(`/v1/api/tim-kiem`, {
-      params: { keyword },
-    });
-    const data = response.data?.data;
+    const [kkRes, ncRes] = await Promise.allSettled([
+      getWithCache(`/v1/api/tim-kiem`, { params: { keyword } }),
+      nguoncApi.search(keyword),
+    ]);
+
+    const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
+    const kkItems = kkData?.items?.map(transformAnime) || [];
+    const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
+
     return {
-      data: data?.items?.map(transformAnime) || [],
-      pagination: data?.params?.pagination || {},
+      data: mergeUniqueContent(kkItems, ncItems),
+      pagination: kkData?.params?.pagination || {},
     };
   },
 
-  // Get anime detail by slug
+  // Get movie/anime detail by slug (supports nc-- prefix and automatic NguonC fallback)
   getAnimeDetail: async (slug) => {
-    const response = await getWithCache(`/phim/${slug}`);
-    const movie = response.data?.movie;
-    const episodes = response.data?.episodes || [];
-    
-    // Transform episodes for easier use
-    const transformedEpisodes = [];
-    
-    // Episodes is an array of server objects
-    episodes.forEach(server => {
-      // Each server has server_data array with episodes
-      const serverData = server.server_data || [];
-      serverData.forEach(ep => {
-        // Avoid duplicate episodes with same name
-        const exists = transformedEpisodes.find(e => e.name === ep.name);
-        if (!exists) {
-          transformedEpisodes.push({
-            name: ep.name,
-            slug: ep.slug,
-            filename: ep.filename,
-            link_embed: ep.link_embed,
-            link_m3u8: ep.link_m3u8,
-          });
-        }
-      });
-    });
+    if (String(slug || '').startsWith(NGUONC_SLUG_PREFIX)) {
+      return nguoncApi.getDetail(slug);
+    }
 
-    return {
-      data: movie ? {
-        id: movie._id,
-        slug: movie.slug,
-        name: movie.name,
-        origin_name: movie.origin_name,
-        content: movie.content,
-        type: movie.type, // Add type field to identify anime/movie/series
-        poster: formatImageUrl(movie.poster_url || movie.thumb_url),
-        thumb_url: formatImageUrl(movie.thumb_url || movie.poster_url),
-        poster_url: formatImageUrl(movie.poster_url || movie.thumb_url),
-        year: movie.year,
-        quality: movie.quality,
-        lang: movie.lang,
-        time: movie.time,
-        episode_current: movie.episode_current,
-        episode_total: movie.episode_total,
-        category: movie.category?.map(c => c.name) || [],
-        categoryList: movie.category?.map(c => ({
-          name: c.name,
-          slug: c.slug || toCategorySlug(c.name),
-        })) || [],
-        country: movie.country?.map(c => c.name) || [],
-        actor: movie.actor || [],
-        director: movie.director || [],
-        episodes: transformedEpisodes,
-      } : null,
-    };
+    try {
+      const response = await getWithCache(`/phim/${slug}`);
+      const movie = response.data?.movie;
+      const episodes = response.data?.episodes || [];
+
+      if (movie) {
+        const transformedEpisodes = [];
+        episodes.forEach((server) => {
+          const serverData = server.server_data || [];
+          serverData.forEach((ep) => {
+            const exists = transformedEpisodes.find((e) => e.name === ep.name);
+            if (!exists) {
+              transformedEpisodes.push({
+                name: ep.name,
+                slug: ep.slug,
+                filename: ep.filename,
+                link_embed: ep.link_embed,
+                link_m3u8: ep.link_m3u8,
+              });
+            }
+          });
+        });
+
+        return {
+          data: {
+            id: movie._id,
+            slug: movie.slug,
+            name: movie.name,
+            origin_name: movie.origin_name,
+            content: movie.content,
+            type: movie.type,
+            poster: formatImageUrl(movie.poster_url || movie.thumb_url),
+            thumb_url: formatImageUrl(movie.thumb_url || movie.poster_url),
+            poster_url: formatImageUrl(movie.poster_url || movie.thumb_url),
+            year: movie.year,
+            quality: movie.quality,
+            lang: movie.lang,
+            time: movie.time,
+            episode_current: movie.episode_current,
+            episode_total: movie.episode_total,
+            category: movie.category?.map((c) => c.name) || [],
+            categoryList:
+              movie.category?.map((c) => ({
+                name: c.name,
+                slug: c.slug || toCategorySlug(c.name),
+              })) || [],
+            country: movie.country?.map((c) => c.name) || [],
+            actor: movie.actor || [],
+            director: movie.director || [],
+            episodes: transformedEpisodes,
+          },
+        };
+      }
+    } catch {
+      // Fallback to NguonC if KKPhim fails or lacks the slug
+    }
+
+    return nguoncApi.getDetail(slug).catch(() => ({ data: null }));
   },
 
   // Get all categories/tags
@@ -337,13 +412,18 @@ async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24,
   const startApiPage = (page - 1) * 3 + 1;
   const pagesToFetch = [startApiPage, startApiPage + 1, startApiPage + 2];
 
-  const responses = await Promise.all(
-    pagesToFetch.map((apiPage) =>
-      getWithCache(`/v1/api/the-loai/${firstSlug}`, {
-        params: { page: apiPage, limit: 64 },
-      }).catch(() => null)
-    )
-  );
+  const [responses, ncRes] = await Promise.all([
+    Promise.all(
+      pagesToFetch.map((apiPage) =>
+        getWithCache(`/v1/api/the-loai/${firstSlug}`, {
+          params: { page: apiPage, limit: 64 },
+        }).catch(() => null)
+      )
+    ),
+    categoryObjects.length === 1
+      ? nguoncApi.getByCategory(firstSlug, page).catch(() => ({ data: [] }))
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const seenKeys = new Set();
   const rawItems = [];
@@ -387,11 +467,15 @@ async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24,
             Math.round((firstPagination?.totalItems || rawCount) * (filteredItems.length / Math.max(rawCount, 1)))
           );
 
+  const kkTransformed = filteredItems.map(transformAnime);
+  const ncFiltered = (ncRes?.data || []).filter(typeFilter);
+  const finalData = mergeUniqueContent(kkTransformed, ncFiltered);
+
   return {
-    data: filteredItems.map(transformAnime),
+    data: finalData,
     pagination: {
-      totalItems,
-      totalItemsPerPage: filteredItems.length || limit,
+      totalItems: Math.max(totalItems, finalData.length),
+      totalItemsPerPage: finalData.length || limit,
       currentPage: page,
       totalPages,
     },
