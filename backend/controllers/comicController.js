@@ -7,9 +7,38 @@ import {
   scrapeLatestComics,
   scrapeSearchComics,
 } from '../services/doctruyen3qScraper.js';
+import {
+  mdGetComicChapter,
+  mdGetComicDetails,
+  mdGetComicsByGenre,
+  mdGetGenres,
+  mdGetLatestComics,
+  mdSearchComics,
+} from '../services/mangadexAdapter.js';
 
 // Cache mặc định 5 phút cho danh sách mới, 10 phút cho chi tiết truyện, 24h cho chương
 const myCache = new NodeCache({ stdTTL: 600, checkperiod: 620 });
+
+// Nếu nguồn chính (doctruyen3qhub) bị chặn IP cloud (ví dụ trên Render), tạm bỏ qua trong 5 phút
+let primaryDownUntil = 0;
+
+async function fetchWithFallback(label, primaryFn, fallbackFn) {
+  const now = Date.now();
+  if (now >= primaryDownUntil) {
+    try {
+      const primaryResult = await primaryFn();
+      if (primaryResult && (primaryResult.data?.items?.length > 0 || primaryResult.data?.chapters)) {
+        return primaryResult;
+      }
+      console.warn(`[COMIC] Nguồn chính (${label}) trả dữ liệu rỗng, chuyển sang MangaDex fallback.`);
+    } catch (err) {
+      const status = err.response?.status;
+      console.warn(`[COMIC] Nguồn chính (${label}) lỗi (${status || err.message}), tạm dùng MangaDex fallback 5 phút.`);
+      primaryDownUntil = now + 5 * 60 * 1000;
+    }
+  }
+  return fallbackFn();
+}
 
 const sendCached = (res, data, maxAge = 300) => {
   res.set('Cache-Control', `public, max-age=${maxAge}, stale-while-revalidate=${maxAge * 2}`);
@@ -26,9 +55,14 @@ export const getLatestComics = async (req, res) => {
       return sendCached(res, cachedData, 300);
     }
 
-    const result = await scrapeLatestComics(page);
+    const result = await fetchWithFallback(
+      'latest',
+      () => scrapeLatestComics(page),
+      () => mdGetLatestComics(page)
+    );
+
     if (result && result.data?.items?.length > 0) {
-      myCache.set(cacheKey, result, 300); // Cache 5 phút để cập nhật truyện mới nhanh
+      myCache.set(cacheKey, result, 300);
       return sendCached(res, result, 300);
     }
 
@@ -49,7 +83,10 @@ export const getComicDetails = async (req, res) => {
       return sendCached(res, cachedData, 600);
     }
 
-    const result = await scrapeComicDetails(slug);
+    const result = slug.startsWith('md--')
+      ? await mdGetComicDetails(slug)
+      : await scrapeComicDetails(slug);
+
     if (result) {
       myCache.set(cacheKey, result, 600);
       return sendCached(res, result, 600);
@@ -72,7 +109,10 @@ export const getComicChapter = async (req, res) => {
       return sendCached(res, cachedData, 86400);
     }
 
-    const data = await scrapeComicChapter(chapterId);
+    const data = chapterId.startsWith('md--')
+      ? await mdGetComicChapter(chapterId)
+      : await scrapeComicChapter(chapterId);
+
     if (data) {
       myCache.set(cacheKey, data, 86400);
       return sendCached(res, data, 86400);
@@ -93,7 +133,12 @@ export const getGenres = async (req, res) => {
       return sendCached(res, cachedData, 86400);
     }
 
-    const data = await scrapeGenres();
+    const data = await fetchWithFallback(
+      'genres',
+      () => scrapeGenres(),
+      () => mdGetGenres()
+    );
+
     if (data && data.data?.items?.length > 0) {
       myCache.set(cacheKey, data, 86400);
       return sendCached(res, data, 86400);
@@ -117,7 +162,14 @@ export const getComicsByGenre = async (req, res) => {
       return sendCached(res, cachedData, 600);
     }
 
-    const data = await scrapeComicsByGenre(slug, page);
+    const data = slug.startsWith('md--')
+      ? await mdGetComicsByGenre(slug, page)
+      : await fetchWithFallback(
+          `genre:${slug}`,
+          () => scrapeComicsByGenre(slug, page),
+          () => mdGetComicsByGenre(slug, page)
+        );
+
     if (data && data.data?.items?.length > 0) {
       myCache.set(cacheKey, data, 600);
       return sendCached(res, data, 600);
@@ -137,7 +189,12 @@ export const searchComics = async (req, res) => {
       return res.status(400).json({ message: 'Keyword is required' });
     }
 
-    const data = await scrapeSearchComics(keyword);
+    const data = await fetchWithFallback(
+      `search:${keyword}`,
+      () => scrapeSearchComics(keyword),
+      () => mdSearchComics(keyword)
+    );
+
     if (data && data.data?.items) {
       return res.json(data);
     }

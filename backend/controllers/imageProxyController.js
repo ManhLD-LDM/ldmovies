@@ -11,13 +11,17 @@ const ALLOWED_HOSTS = new Set([
   'otruyenapi.com',
   'doctruyen3qhub.club',
   'anhvip.xyz',
+  'uploads.mangadex.org',
+  'mangadex.org',
 ]);
 
 const isAllowedHost = (hostname = '') => {
   if (ALLOWED_HOSTS.has(hostname)) return true;
   return (
     hostname.endsWith('.anhvip.xyz') ||
-    hostname.endsWith('.doctruyen3qhub.club')
+    hostname.endsWith('.doctruyen3qhub.club') ||
+    hostname.endsWith('.mangadex.org') ||
+    hostname.endsWith('.mangadex.network')
   );
 };
 

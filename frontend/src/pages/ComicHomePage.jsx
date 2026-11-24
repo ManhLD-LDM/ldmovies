@@ -8,6 +8,15 @@ import useDocumentTitle from '../utils/useDocumentTitle';
 
 // Prefetch cache đơn giản - lưu các request đã được prefetch
 const prefetchedSlugs = new Set();
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+function resolveComicImageUrl(url) {
+  if (!url) return FALLBACK_POSTER;
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/api/')) return `${API_BASE}${url.slice(4)}`;
+  if (url.startsWith('/')) return url;
+  return `https://img.otruyenapi.com/uploads/comics/${url}`;
+}
 
 function prefetchComicDetail(slug) {
   if (!slug || prefetchedSlugs.has(slug)) return;
@@ -378,7 +387,7 @@ function ComicHomePage() {
             <div className="relative w-full h-[600px] rounded-none md:rounded-[2rem] overflow-hidden mb-24 bg-[#050505]">
               {comics.slice(0, 3).map((comic, idx) => {
                 const isActive = idx === heroIndex;
-                const imgUrl = comic.thumb_url?.startsWith('http') ? comic.thumb_url : `https://img.otruyenapi.com/uploads/comics/${comic.thumb_url}`;
+                const imgUrl = resolveComicImageUrl(comic.thumb_url);
                 return (
                   <div 
                     key={`hero-${comic.slug || comic.id || idx}`} 
@@ -452,7 +461,7 @@ function ComicHomePage() {
                 {/* Hình ảnh */}
                 <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-900 rounded-lg relative mb-4">
                   <img 
-                    src={comic.thumb_url?.startsWith('http') ? comic.thumb_url : `https://img.otruyenapi.com/uploads/comics/${comic.thumb_url}`} 
+                    src={resolveComicImageUrl(comic.thumb_url)} 
                     alt={comic.name} 
                     className="w-full h-full object-cover transform group-hover:scale-[1.04] group-hover:opacity-90 transition-all duration-700 ease-out"
                     loading="lazy"

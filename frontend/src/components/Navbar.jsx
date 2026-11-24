@@ -170,12 +170,17 @@ function Navbar() {
           if (appMode === 'comic') {
             const response = await comicApi.searchComics(searchQuery.trim());
             if (isCancelled) return;
+            const apiBase = import.meta.env.VITE_API_URL || '/api';
             const mappedComics = (response.data?.items || []).slice(0, 5).map(item => ({
               id: item._id,
               slug: item.slug,
               name: item.name,
               origin_name: item.origin_name?.length ? item.origin_name[0] : '',
-              thumb_url: item.thumb_url?.startsWith('http') ? item.thumb_url : `https://img.otruyenapi.com/uploads/comics/${item.thumb_url}`,
+              thumb_url: item.thumb_url?.startsWith('http')
+                ? item.thumb_url
+                : item.thumb_url?.startsWith('/api/')
+                  ? `${apiBase}${item.thumb_url.slice(4)}`
+                  : `https://img.otruyenapi.com/uploads/comics/${item.thumb_url}`,
               year: '',
               quality: 'Truyện',
               isComic: true

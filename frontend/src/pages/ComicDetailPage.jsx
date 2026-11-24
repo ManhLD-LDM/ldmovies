@@ -18,6 +18,16 @@ const STATUS_LABELS = {
   coming_soon: 'Sắp ra mắt',
 };
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+function resolveComicImageUrl(url) {
+  if (!url) return FALLBACK_POSTER;
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/api/')) return `${API_BASE}${url.slice(4)}`;
+  if (url.startsWith('/')) return url;
+  return `https://img.otruyenapi.com/uploads/comics/${url}`;
+}
+
 function ComicDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -203,7 +213,7 @@ function ComicDetailPage() {
         <div className="w-full md:w-[320px] flex-shrink-0">
           <div className="aspect-[2/3] w-full bg-zinc-900 rounded-lg overflow-hidden relative">
             <img
-              src={comic.thumb_url || FALLBACK_POSTER}
+              src={resolveComicImageUrl(comic.thumb_url)}
               alt={comic.name}
               className="w-full h-full object-cover"
               onError={(e) => {
