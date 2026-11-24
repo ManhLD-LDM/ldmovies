@@ -100,6 +100,9 @@ function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
   return merged;
 }
 
+const sortByModifiedDesc = (items = []) =>
+  [...items].sort((a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0));
+
 // Transform data to consistent format
 const transformAnime = (item) => ({
   id: item._id,
@@ -122,6 +125,7 @@ const transformAnime = (item) => ({
   type: item.type || 'single', // Store original type from API
   tmdb: item.tmdb || null,
   imdb: item.imdb || null,
+  modifiedTime: item.modified?.time || null,
 });
 
 // Predefined categories list
@@ -163,16 +167,16 @@ export const kkphimApi = {
   getLatestAnime: async (page = 1, limit = 24) => {
     const [kkRes, ncRes] = await Promise.allSettled([
       getWithCache(`/v1/api/danh-sach/hoat-hinh`, {
-        params: { page, limit, sort_field: 'year', sort_type: 'desc' },
+        params: { page, limit, sort_field: 'modified.time', sort_type: 'desc' },
       }),
-      nguoncApi.getAnime(page),
+      nguoncApi.getByCategory('hoat-hinh', page, 2),
     ]);
     const kkItems =
       kkRes.status === 'fulfilled'
         ? kkRes.value.data?.data?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || []
         : [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
-    const merged = mergeUniqueContent(kkItems, ncItems);
+    const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
     return {
       data: merged.slice(0, limit),
       pagination: kkRes.status === 'fulfilled' ? kkRes.value.data?.data?.params?.pagination || {} : {},
@@ -183,8 +187,8 @@ export const kkphimApi = {
   getLatestMovies: async (page = 1, limit = 24) => {
     try {
       const [moviesRes, seriesRes, ncMoviesRes, ncSeriesRes] = await Promise.allSettled([
-        getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'year', sort_type: 'desc' } }),
-        getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'year', sort_type: 'desc' } }),
+        getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'modified.time', sort_type: 'desc' } }),
+        getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit: Math.ceil(limit / 2), sort_field: 'modified.time', sort_type: 'desc' } }),
         nguoncApi.getMovies(page),
         nguoncApi.getTVSeries(page),
       ]);
@@ -200,11 +204,9 @@ export const kkphimApi = {
       const ncMovies = ncMoviesRes.status === 'fulfilled' ? ncMoviesRes.value.data || [] : [];
       const ncSeries = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.data || [] : [];
 
-      const kkCombined = [...moviesData, ...seriesData].sort(
-        (a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0)
-      );
+      const kkCombined = sortByModifiedDesc([...moviesData, ...seriesData]);
       const ncCombined = [...ncMovies, ...ncSeries];
-      const merged = mergeUniqueContent(kkCombined, ncCombined);
+      const merged = sortByModifiedDesc(mergeUniqueContent(kkCombined, ncCombined));
 
       return {
         data: merged.slice(0, limit),
@@ -220,12 +222,12 @@ export const kkphimApi = {
   getAllAnime: async (page = 1, limit = 24) => {
     const [kkRes, ncRes] = await Promise.allSettled([
       getWithCache(`/v1/api/danh-sach/hoat-hinh`, { params: { page, limit } }),
-      nguoncApi.getAnime(page),
+      nguoncApi.getByCategory('hoat-hinh', page, 2),
     ]);
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
-    const merged = mergeUniqueContent(kkItems, ncItems);
+    const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
     return {
       data: merged.slice(0, limit),
       pagination: kkData?.params?.pagination || {},
@@ -241,7 +243,7 @@ export const kkphimApi = {
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'single' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
-    const merged = mergeUniqueContent(kkItems, ncItems);
+    const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
     return {
       data: merged.slice(0, limit),
       pagination: kkData?.params?.pagination || {},
@@ -257,7 +259,7 @@ export const kkphimApi = {
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'series' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
-    const merged = mergeUniqueContent(kkItems, ncItems);
+    const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
     return {
       data: merged.slice(0, limit),
       pagination: kkData?.params?.pagination || {},
@@ -285,7 +287,7 @@ export const kkphimApi = {
       const ncMovies = ncMoviesRes.status === 'fulfilled' ? ncMoviesRes.value.data || [] : [];
       const ncSeries = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.data || [] : [];
 
-      const merged = mergeUniqueContent([...moviesData, ...seriesData], [...ncMovies, ...ncSeries]);
+      const merged = sortByModifiedDesc(mergeUniqueContent([...moviesData, ...seriesData], [...ncMovies, ...ncSeries]));
 
       return {
         data: merged.slice(0, limit),

@@ -61,7 +61,7 @@ function AnimePage() {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Anime Vietsub</h1>
-            <p className="text-gray-400">Tổng hợp anime Vietsub mới nhất từ KKPhim</p>
+            <p className="text-gray-400">Tổng hợp anime Vietsub mới nhất từ KKPhim &amp; NguonC</p>
           </div>
           <button
             type="button"
