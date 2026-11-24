@@ -84,39 +84,53 @@ export const proxyImage = async (req, res) => {
       target.hostname.endsWith('.mangadex.org') ||
       target.hostname.endsWith('.mangadex.network');
 
-    if (
+    const isDocTruyen3QHost =
       target.hostname === 'anhvip.xyz' ||
       target.hostname.endsWith('.anhvip.xyz') ||
       target.hostname === 'topcdnv1.art' ||
       target.hostname.endsWith('.topcdnv1.art') ||
       target.hostname === 'doctruyen3qhub.club' ||
-      target.hostname.endsWith('.doctruyen3qhub.club')
-    ) {
+      target.hostname.endsWith('.doctruyen3qhub.club');
+
+    if (isDocTruyen3QHost) {
       upstreamHeaders.Referer = 'https://doctruyen3qhub.club/';
     } else if (isMangaDexHost) {
       upstreamHeaders.Referer = 'https://mangadex.org/';
       upstreamHeaders.Origin = 'https://mangadex.org';
     }
 
+    const relayUrl = (process.env.COMIC_RELAY_URL || '').replace(/\/+$/, '');
+    const relaySecret = process.env.COMIC_RELAY_SECRET || '';
+
     let upstream;
-    try {
-      upstream = await axios.get(target.href, {
+    if (isDocTruyen3QHost && relayUrl) {
+      upstream = await axios.get(`${relayUrl}/api/raw-img`, {
+        params: { url: target.href },
         responseType: 'arraybuffer',
-        timeout: 15000,
-        maxContentLength: 15 * 1024 * 1024, // 15MB limit
-        headers: upstreamHeaders,
+        timeout: 20000,
+        maxContentLength: 15 * 1024 * 1024,
+        headers: relaySecret ? { 'x-relay-secret': relaySecret } : {},
       });
-    } catch (fetchErr) {
-      const fallbackUrl = target.href.replace(/\.(512|256)\.jpg$/i, '');
-      if (isMangaDexHost && fallbackUrl !== target.href) {
-        upstream = await axios.get(fallbackUrl, {
+    } else {
+      try {
+        upstream = await axios.get(target.href, {
           responseType: 'arraybuffer',
           timeout: 15000,
-          maxContentLength: 15 * 1024 * 1024,
+          maxContentLength: 15 * 1024 * 1024, // 15MB limit
           headers: upstreamHeaders,
         });
-      } else {
-        throw fetchErr;
+      } catch (fetchErr) {
+        const fallbackUrl = target.href.replace(/\.(512|256)\.jpg$/i, '');
+        if (isMangaDexHost && fallbackUrl !== target.href) {
+          upstream = await axios.get(fallbackUrl, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            maxContentLength: 15 * 1024 * 1024,
+            headers: upstreamHeaders,
+          });
+        } else {
+          throw fetchErr;
+        }
       }
     }
 
