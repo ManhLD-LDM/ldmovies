@@ -14,6 +14,8 @@ function AnimePage() {
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+  const rawSort = searchParams.get('sort') || 'updated';
+  const sortParam = ['updated', 'year_desc', 'year_asc'].includes(rawSort) ? rawSort : 'updated';
 
   const [animes, setAnimes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,7 @@ function AnimePage() {
       setLoading(true);
       setError(false);
       try {
-        const response = await kkphimApi.getAllAnime(activePage, 24);
+        const response = await kkphimApi.getAllAnime(activePage, 24, sortParam);
         if (isCancelled) return;
         setAnimes(response?.data || []);
         setTotalPages(response?.pagination?.totalPages || 1);
@@ -48,10 +50,15 @@ function AnimePage() {
     return () => {
       isCancelled = true;
     };
-  }, [activePage, retryCount]);
+  }, [activePage, sortParam, retryCount]);
 
   const handlePageChange = (newPage) => {
-    navigate(`/anime?page=${newPage}`);
+    navigate(`/anime?page=${newPage}${sortParam !== 'updated' ? `&sort=${sortParam}` : ''}`);
+  };
+
+  const handleSortChange = (e) => {
+    const newSort = e.target.value;
+    navigate(newSort === 'updated' ? '/anime?page=1' : `/anime?page=1&sort=${newSort}`);
   };
 
   return (
@@ -63,14 +70,26 @@ function AnimePage() {
             <h1 className="text-3xl font-bold text-white mb-2">Anime Vietsub</h1>
             <p className="text-gray-400">Tổng hợp anime Vietsub mới nhất từ KKPhim &amp; NguonC</p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/anime/filter')}
-            className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium shadow-lg shadow-primary-600/30"
-          >
-            <FiFilter size={18} />
-            <span>Bộ Lọc</span>
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <select
+              value={sortParam}
+              onChange={handleSortChange}
+              aria-label="Sắp xếp anime"
+              className="bg-dark-200 border border-white/10 text-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+            >
+              <option value="updated">Mới cập nhật</option>
+              <option value="year_desc">Năm: Mới → Cũ</option>
+              <option value="year_asc">Năm: Cũ → Mới</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => navigate('/anime/filter')}
+              className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium shadow-lg shadow-primary-600/30"
+            >
+              <FiFilter size={18} />
+              <span>Bộ Lọc</span>
+            </button>
+          </div>
         </div>
       </div>
 

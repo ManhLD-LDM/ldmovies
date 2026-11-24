@@ -103,6 +103,24 @@ function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
 const sortByModifiedDesc = (items = []) =>
   [...items].sort((a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0));
 
+const buildMergedPagination = (kkPagination, ncPaginate, page, ncPagesPerUiPage = 1) => {
+  const kkTotalPages = Number(kkPagination?.totalPages) || 0;
+  const ncTotalPages = ncPaginate?.total_page
+    ? Math.ceil(Number(ncPaginate.total_page) / ncPagesPerUiPage)
+    : 0;
+  const totalPages = Math.max(1, kkTotalPages, ncTotalPages);
+  const totalItems = Math.max(
+    Number(kkPagination?.totalItems) || 0,
+    Number(ncPaginate?.total_items) || 0
+  );
+  return {
+    ...(kkPagination || {}),
+    currentPage: page,
+    totalPages,
+    totalItems,
+  };
+};
+
 // Transform data to consistent format
 const transformAnime = (item) => ({
   id: item._id,
@@ -218,19 +236,47 @@ export const kkphimApi = {
     }
   },
 
-  // Get all anime (paginated) - KKPhim + NguonC
-  getAllAnime: async (page = 1, limit = 24) => {
+  // Get all anime (paginated + sortable) - KKPhim + NguonC
+  getAllAnime: async (page = 1, limit = 24, sort = 'updated') => {
+    const sortParams =
+      sort === 'year_desc'
+        ? { sort_field: 'year', sort_type: 'desc' }
+        : sort === 'year_asc'
+          ? { sort_field: 'year', sort_type: 'asc' }
+          : { sort_field: 'modified.time', sort_type: 'desc' };
+
     const [kkRes, ncRes] = await Promise.allSettled([
-      getWithCache(`/v1/api/danh-sach/hoat-hinh`, { params: { page, limit } }),
-      nguoncApi.getByCategory('hoat-hinh', page, 2),
+      getWithCache(`/v1/api/danh-sach/hoat-hinh`, { params: { page, limit, ...sortParams } }),
+      sort === 'year_asc'
+        ? Promise.resolve({ data: [], paginate: null })
+        : nguoncApi.getByCategory('hoat-hinh', page, 2),
     ]);
+
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
-    const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
+    const merged = mergeUniqueContent(kkItems, ncItems);
+
+    const sorted =
+      sort === 'year_asc'
+        ? merged
+        : sort === 'year_desc'
+          ? [...merged].sort((a, b) => {
+              const yDiff = (Number(b.year) || 0) - (Number(a.year) || 0);
+              if (yDiff !== 0) return yDiff;
+              return new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0);
+            })
+          : sortByModifiedDesc(merged);
+
+    const kkPagination = kkData?.params?.pagination || null;
+    const ncPaginate = ncRes.status === 'fulfilled' ? ncRes.value.paginate : null;
+
     return {
-      data: merged.slice(0, limit),
-      pagination: kkData?.params?.pagination || {},
+      data: sorted.slice(0, limit),
+      pagination:
+        sort === 'year_asc'
+          ? { ...(kkPagination || {}), currentPage: page }
+          : buildMergedPagination(kkPagination, ncPaginate, page, 2),
     };
   },
 
@@ -244,9 +290,11 @@ export const kkphimApi = {
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'single' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
     const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
+    const kkPagination = kkData?.params?.pagination || null;
+    const ncPaginate = ncRes.status === 'fulfilled' ? ncRes.value.paginate : null;
     return {
       data: merged.slice(0, limit),
-      pagination: kkData?.params?.pagination || {},
+      pagination: buildMergedPagination(kkPagination, ncPaginate, page, 1),
     };
   },
 
@@ -260,9 +308,11 @@ export const kkphimApi = {
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'series' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
     const merged = sortByModifiedDesc(mergeUniqueContent(kkItems, ncItems));
+    const kkPagination = kkData?.params?.pagination || null;
+    const ncPaginate = ncRes.status === 'fulfilled' ? ncRes.value.paginate : null;
     return {
       data: merged.slice(0, limit),
-      pagination: kkData?.params?.pagination || {},
+      pagination: buildMergedPagination(kkPagination, ncPaginate, page, 1),
     };
   },
 
@@ -288,10 +338,18 @@ export const kkphimApi = {
       const ncSeries = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.data || [] : [];
 
       const merged = sortByModifiedDesc(mergeUniqueContent([...moviesData, ...seriesData], [...ncMovies, ...ncSeries]));
+      const kkPagination =
+        moviesRes.status === 'fulfilled' ? moviesRes.value.data?.data?.params?.pagination || null : null;
+      const ncMoviesPaginate = ncMoviesRes.status === 'fulfilled' ? ncMoviesRes.value.paginate : null;
+      const ncSeriesPaginate = ncSeriesRes.status === 'fulfilled' ? ncSeriesRes.value.paginate : null;
+      const maxNcPaginate =
+        (Number(ncSeriesPaginate?.total_page) || 0) > (Number(ncMoviesPaginate?.total_page) || 0)
+          ? ncSeriesPaginate
+          : ncMoviesPaginate;
 
       return {
         data: merged.slice(0, limit),
-        pagination: moviesRes.status === 'fulfilled' ? moviesRes.value.data?.data?.params?.pagination || {} : {},
+        pagination: buildMergedPagination(kkPagination, maxNcPaginate, page, 1),
       };
     } catch (error) {
       console.error('Error fetching movies and series:', error);
