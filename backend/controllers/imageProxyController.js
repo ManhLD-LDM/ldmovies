@@ -11,6 +11,7 @@ const ALLOWED_HOSTS = new Set([
   'otruyenapi.com',
   'doctruyen3qhub.club',
   'anhvip.xyz',
+  'topcdnv1.art',
   'uploads.mangadex.org',
   'mangadex.org',
 ]);
@@ -19,6 +20,7 @@ const isAllowedHost = (hostname = '') => {
   if (ALLOWED_HOSTS.has(hostname)) return true;
   return (
     hostname.endsWith('.anhvip.xyz') ||
+    hostname.endsWith('.topcdnv1.art') ||
     hostname.endsWith('.doctruyen3qhub.club') ||
     hostname.endsWith('.mangadex.org') ||
     hostname.endsWith('.mangadex.network')
@@ -85,6 +87,8 @@ export const proxyImage = async (req, res) => {
     if (
       target.hostname === 'anhvip.xyz' ||
       target.hostname.endsWith('.anhvip.xyz') ||
+      target.hostname === 'topcdnv1.art' ||
+      target.hostname.endsWith('.topcdnv1.art') ||
       target.hostname === 'doctruyen3qhub.club' ||
       target.hostname.endsWith('.doctruyen3qhub.club')
     ) {
