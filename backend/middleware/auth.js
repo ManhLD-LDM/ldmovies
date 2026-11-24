@@ -12,8 +12,15 @@ export const protect = async (req, res, next) => {
   let user;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     user = await User.findById(decoded.id).select('-password');
+    if (
+      user?.passwordChangedAt &&
+      decoded.iat &&
+      decoded.iat * 1000 < user.passwordChangedAt.getTime()
+    ) {
+      return res.status(401).json({ message: 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại' });
+    }
   } catch (error) {
     return res.status(401).json({ message: 'Không được phép, token không hợp lệ' });
   }

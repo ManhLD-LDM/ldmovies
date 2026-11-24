@@ -1,6 +1,31 @@
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 
+const sendServerError = (res, error) =>
+  res.status(500).json(
+    process.env.NODE_ENV === 'production'
+      ? { message: 'Lỗi server' }
+      : { message: 'Lỗi server', error: error.message }
+  );
+
+const isValidAvatar = (value) => {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.startsWith('https://')) {
+    return trimmed.length <= 1000;
+  }
+  if (/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);/i.test(trimmed)) {
+    return (
+      trimmed.length <= 8000 &&
+      !/<script/i.test(trimmed) &&
+      !/\bon\w+\s*=/i.test(trimmed) &&
+      !/javascript:/i.test(trimmed)
+    );
+  }
+  return false;
+};
+
 // @desc    Lấy thông tin profile user
 // @route   GET /api/users/profile
 // @access  Private
@@ -21,10 +46,7 @@ export const getUserProfile = async (req, res) => {
       createdAt: user.createdAt,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -33,21 +55,30 @@ export const getUserProfile = async (req, res) => {
 // @access  Private
 export const updateUserProfile = async (req, res) => {
   try {
+    const { username, avatar, bio } = req.body;
+
+    if (username !== undefined && typeof username !== 'string') {
+      return res.status(400).json({ message: 'Username không hợp lệ' });
+    }
+    if (bio !== undefined && typeof bio !== 'string') {
+      return res.status(400).json({ message: 'Bio không hợp lệ' });
+    }
+    if (avatar !== undefined && !isValidAvatar(avatar)) {
+      return res.status(400).json({ message: 'URL ảnh đại diện không hợp lệ (chỉ chấp nhận https:// hoặc data:image)' });
+    }
+
     const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy user' });
     }
 
-    // Cập nhật các trường được cho phép
-    user.username = req.body.username || user.username;
-    user.avatar = req.body.avatar || user.avatar;
-    user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
+    const nextUsername = typeof username === 'string' ? username.trim() : '';
 
-    // Kiểm tra username đã tồn tại chưa (nếu thay đổi)
-    if (req.body.username && req.body.username !== user.username) {
+    // Kiểm tra username đã tồn tại chưa TRƯỚC khi gán giá trị mới
+    if (nextUsername && nextUsername !== user.username) {
       const usernameExists = await User.findOne({
-        username: req.body.username,
+        username: nextUsername,
         _id: { $ne: user._id },
       });
 
@@ -56,6 +87,14 @@ export const updateUserProfile = async (req, res) => {
           message: 'Username đã được sử dụng',
         });
       }
+      user.username = nextUsername;
+    }
+
+    if (typeof avatar === 'string' && avatar.trim()) {
+      user.avatar = avatar.trim();
+    }
+    if (bio !== undefined) {
+      user.bio = bio;
     }
 
     const updatedUser = await user.save();
@@ -68,10 +107,7 @@ export const updateUserProfile = async (req, res) => {
       bio: updatedUser.bio,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -83,16 +119,21 @@ export const changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     // Validate input
-    if (!currentPassword || !newPassword) {
+    if (
+      typeof currentPassword !== 'string' ||
+      typeof newPassword !== 'string' ||
+      !currentPassword ||
+      !newPassword
+    ) {
       return res.status(400).json({
         message: 'Vui lòng cung cấp đầy đủ thông tin',
       });
     }
 
     // Check password length
-    if (newPassword.length < 6) {
+    if (newPassword.length < 6 || newPassword.length > 128) {
       return res.status(400).json({
-        message: 'Mật khẩu mới phải có ít nhất 6 ký tự',
+        message: 'Mật khẩu mới phải có từ 6 đến 128 ký tự',
       });
     }
 
@@ -128,9 +169,6 @@ export const changePassword = async (req, res) => {
       message: 'Đổi mật khẩu thành công',
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };

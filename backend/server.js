@@ -64,40 +64,27 @@ app.use(express.json({ limit: '10kb' })); // Giới hạn payload tối đa 10kb
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://ribbonlike-frailly-jaydon.ngrok-free.dev',
-  'https://movieweb-frontend.nport.link',
-  'https://LowDetailMovies.nport.link',
+const extraCorsOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const allowedOrigins = new Set([
+  'https://ldmovies.vercel.app',
   'https://ldmovies.mydrpet.io.vn',
   'http://ldmovies.mydrpet.io.vn',
-];
-
-const ALLOWED_DOMAIN_SUFFIXES = [
-  '.ngrok-free.dev',
-  '.ngrok-free.app',
-  '.nport.link',
-  '.mydrpet.io.vn',
-  '.vercel.app',
-  '.onrender.com',
-];
+  ...extraCorsOrigins,
+  ...(process.env.NODE_ENV !== 'production'
+    ? ['http://localhost:3000', 'http://localhost:5173']
+    : []),
+]);
 
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
-      }
-      try {
-        const { hostname } = new URL(origin);
-        const matched = ALLOWED_DOMAIN_SUFFIXES.some(
-          (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
-        );
-        if (matched) return callback(null, true);
-      } catch (err) {
-        // Invalid URL format
       }
       return callback(new Error('Not allowed by CORS'));
     },
@@ -178,10 +165,10 @@ if (fs.existsSync(distIndexHtml)) {
 // ─── Error Handling Middleware ────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  res.status(statusCode);
-  res.json({
-    message: err.message,
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+  const isProd = process.env.NODE_ENV === 'production';
+  res.status(statusCode).json({
+    message: isProd && statusCode === 500 ? 'Lỗi server' : err.message,
+    stack: isProd ? null : err.stack,
   });
 });
 

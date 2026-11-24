@@ -1,10 +1,18 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
+const sendServerError = (res, error) =>
+  res.status(500).json(
+    process.env.NODE_ENV === 'production'
+      ? { message: 'Lỗi server' }
+      : { message: 'Lỗi server', error: error.message }
+  );
+
 // Tạo JWT Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE,
+    expiresIn: process.env.JWT_EXPIRE || '7d',
+    algorithm: 'HS256',
   });
 };
 
@@ -15,9 +23,22 @@ export const register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
+    if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ message: 'Dữ liệu đăng ký không hợp lệ' });
+    }
+
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanUsername || !cleanEmail || password.length < 6 || password.length > 128) {
+      return res.status(400).json({
+        message: 'Vui lòng nhập đầy đủ thông tin (mật khẩu từ 6 đến 128 ký tự)',
+      });
+    }
+
     // Kiểm tra user đã tồn tại
     const userExists = await User.findOne({
-      $or: [{ email }, { username }],
+      $or: [{ email: cleanEmail }, { username: cleanUsername }],
     });
 
     if (userExists) {
@@ -28,8 +49,8 @@ export const register = async (req, res) => {
 
     // Tạo user mới
     const user = await User.create({
-      username,
-      email,
+      username: cleanUsername,
+      email: cleanEmail,
       password,
     });
 
@@ -44,10 +65,7 @@ export const register = async (req, res) => {
       });
     }
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -58,15 +76,23 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Kiểm tra email và password
-    if (!email || !password) {
+    // Kiểm tra kiểu dữ liệu và rỗng
+    if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
       return res.status(400).json({
         message: 'Vui lòng nhập email và mật khẩu',
       });
     }
 
+    if (password.length > 128) {
+      return res.status(401).json({
+        message: 'Email hoặc mật khẩu không đúng',
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
     // Tìm user với password field
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email: cleanEmail }).select('+password');
 
     if (!user) {
       return res.status(401).json({
@@ -92,10 +118,7 @@ export const login = async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -115,9 +138,6 @@ export const getMe = async (req, res) => {
       createdAt: user.createdAt,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };

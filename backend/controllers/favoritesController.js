@@ -1,5 +1,29 @@
 import User from '../models/User.js';
 
+const MAX_FAVORITES = 200;
+
+const sendServerError = (res, error) =>
+  res.status(500).json(
+    process.env.NODE_ENV === 'production'
+      ? { message: 'Lỗi server' }
+      : { message: 'Lỗi server', error: error.message }
+  );
+
+const sanitizeFavoriteInput = (id, title, poster) => {
+  if (typeof id !== 'string' || typeof title !== 'string') return null;
+  const cleanId = id.trim().slice(0, 300);
+  const cleanTitle = title.trim().slice(0, 300);
+  if (!cleanId || !cleanTitle) return null;
+  let cleanPoster = '';
+  if (typeof poster === 'string') {
+    const trimmed = poster.trim();
+    if (trimmed.startsWith('https://') || trimmed.startsWith('/api/img')) {
+      cleanPoster = trimmed.slice(0, 1000);
+    }
+  }
+  return { cleanId, cleanTitle, cleanPoster };
+};
+
 // @desc    Lấy danh sách phim yêu thích
 // @route   GET /api/favorites/movies
 // @access  Private
@@ -8,10 +32,7 @@ export const getFavoriteMovies = async (req, res) => {
     const user = await User.findById(req.user._id).select('favorites.movies').lean();
     res.json(user.favorites.movies);
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -20,19 +41,25 @@ export const getFavoriteMovies = async (req, res) => {
 // @access  Private
 export const addFavoriteMovie = async (req, res) => {
   try {
-    const { movieId, title, poster } = req.body;
+    const parsed = sanitizeFavoriteInput(req.body.movieId, req.body.title, req.body.poster);
 
-    if (!movieId || !title) {
+    if (!parsed) {
       return res.status(400).json({
-        message: 'Vui lòng cung cấp movieId và title',
+        message: 'Vui lòng cung cấp movieId và title hợp lệ',
       });
     }
 
     const user = await User.findById(req.user._id);
 
+    if (user.favorites.movies.length >= MAX_FAVORITES) {
+      return res.status(400).json({
+        message: `Danh sách yêu thích đã đạt giới hạn tối đa ${MAX_FAVORITES} mục`,
+      });
+    }
+
     // Kiểm tra phim đã có trong danh sách chưa
     const movieExists = user.favorites.movies.find(
-      (movie) => movie.movieId === movieId
+      (movie) => movie.movieId === parsed.cleanId
     );
 
     if (movieExists) {
@@ -42,9 +69,9 @@ export const addFavoriteMovie = async (req, res) => {
     }
 
     user.favorites.movies.unshift({
-      movieId,
-      title,
-      poster: poster || '',
+      movieId: parsed.cleanId,
+      title: parsed.cleanTitle,
+      poster: parsed.cleanPoster,
     });
 
     await user.save();
@@ -54,10 +81,7 @@ export const addFavoriteMovie = async (req, res) => {
       favorites: user.favorites.movies,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -79,10 +103,7 @@ export const removeFavoriteMovie = async (req, res) => {
       favorites: user.favorites.movies,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -94,10 +115,7 @@ export const getFavoriteAnime = async (req, res) => {
     const user = await User.findById(req.user._id).select('favorites.anime').lean();
     res.json(user.favorites.anime);
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -106,19 +124,25 @@ export const getFavoriteAnime = async (req, res) => {
 // @access  Private
 export const addFavoriteAnime = async (req, res) => {
   try {
-    const { animeId, title, poster } = req.body;
+    const parsed = sanitizeFavoriteInput(req.body.animeId, req.body.title, req.body.poster);
 
-    if (!animeId || !title) {
+    if (!parsed) {
       return res.status(400).json({
-        message: 'Vui lòng cung cấp animeId và title',
+        message: 'Vui lòng cung cấp animeId và title hợp lệ',
       });
     }
 
     const user = await User.findById(req.user._id);
 
+    if (user.favorites.anime.length >= MAX_FAVORITES) {
+      return res.status(400).json({
+        message: `Danh sách yêu thích đã đạt giới hạn tối đa ${MAX_FAVORITES} mục`,
+      });
+    }
+
     // Kiểm tra anime đã có trong danh sách chưa
     const animeExists = user.favorites.anime.find(
-      (anime) => anime.animeId === animeId
+      (anime) => anime.animeId === parsed.cleanId
     );
 
     if (animeExists) {
@@ -128,9 +152,9 @@ export const addFavoriteAnime = async (req, res) => {
     }
 
     user.favorites.anime.unshift({
-      animeId,
-      title,
-      poster: poster || '',
+      animeId: parsed.cleanId,
+      title: parsed.cleanTitle,
+      poster: parsed.cleanPoster,
     });
 
     await user.save();
@@ -140,10 +164,7 @@ export const addFavoriteAnime = async (req, res) => {
       favorites: user.favorites.anime,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -165,10 +186,7 @@ export const removeFavoriteAnime = async (req, res) => {
       favorites: user.favorites.anime,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -180,10 +198,7 @@ export const getFavoriteComics = async (req, res) => {
     const user = await User.findById(req.user._id).select('favorites.comics').lean();
     res.json(user.favorites.comics || []);
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -192,11 +207,11 @@ export const getFavoriteComics = async (req, res) => {
 // @access  Private
 export const addFavoriteComic = async (req, res) => {
   try {
-    const { comicId, title, poster } = req.body;
+    const parsed = sanitizeFavoriteInput(req.body.comicId, req.body.title, req.body.poster);
 
-    if (!comicId || !title) {
+    if (!parsed) {
       return res.status(400).json({
-        message: 'Vui lòng cung cấp comicId và title',
+        message: 'Vui lòng cung cấp comicId và title hợp lệ',
       });
     }
 
@@ -206,8 +221,14 @@ export const addFavoriteComic = async (req, res) => {
       user.favorites.comics = [];
     }
 
+    if (user.favorites.comics.length >= MAX_FAVORITES) {
+      return res.status(400).json({
+        message: `Danh sách yêu thích đã đạt giới hạn tối đa ${MAX_FAVORITES} mục`,
+      });
+    }
+
     const comicExists = user.favorites.comics.find(
-      (comic) => comic.comicId === comicId
+      (comic) => comic.comicId === parsed.cleanId
     );
 
     if (comicExists) {
@@ -217,9 +238,9 @@ export const addFavoriteComic = async (req, res) => {
     }
 
     user.favorites.comics.unshift({
-      comicId,
-      title,
-      poster: poster || '',
+      comicId: parsed.cleanId,
+      title: parsed.cleanTitle,
+      poster: parsed.cleanPoster,
     });
 
     await user.save();
@@ -229,10 +250,7 @@ export const addFavoriteComic = async (req, res) => {
       favorites: user.favorites.comics,
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };
 
@@ -255,9 +273,6 @@ export const removeFavoriteComic = async (req, res) => {
       favorites: user.favorites.comics || [],
     });
   } catch (error) {
-    res.status(500).json({
-      message: 'Lỗi server',
-      error: error.message,
-    });
+    sendServerError(res, error);
   }
 };

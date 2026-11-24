@@ -28,9 +28,31 @@ const isAllowedHost = (hostname = '') => {
 };
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'img');
+const MAX_CACHE_FILES = 500;
+const EVICT_TARGET_FILES = 350;
+let cacheWriteCount = 0;
 
 const getCacheKey = (url, width, quality, format) => {
-  return crypto.createHash('sha1').update(`${url}|${width}|${quality}|${format}`).digest('hex') + '.' + format;
+  return crypto.createHash('sha256').update(`${url}|${width}|${quality}|${format}`).digest('hex') + '.' + format;
+};
+
+const pruneDiskCache = async () => {
+  try {
+    const files = await fs.readdir(CACHE_DIR);
+    if (files.length <= MAX_CACHE_FILES) return;
+    const stats = await Promise.all(
+      files.map(async (name) => {
+        const fullPath = path.join(CACHE_DIR, name);
+        const st = await fs.stat(fullPath).catch(() => null);
+        return st ? { fullPath, mtimeMs: st.mtimeMs } : null;
+      })
+    );
+    const sorted = stats.filter(Boolean).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const toDelete = sorted.slice(0, Math.max(0, sorted.length - EVICT_TARGET_FILES));
+    await Promise.all(toDelete.map((f) => fs.unlink(f.fullPath).catch(() => {})));
+  } catch {
+    // Ignore cache pruning errors
+  }
 };
 
 export const proxyImage = async (req, res) => {
@@ -143,9 +165,12 @@ export const proxyImage = async (req, res) => {
       ? await pipeline.avif({ quality: Math.max(quality - 10, 20) }).toBuffer()
       : await pipeline.webp({ quality }).toBuffer();
 
-    // Async write to disk cache (fire and forget)
+    // Async write to disk cache (fire and forget, bounded)
+    cacheWriteCount += 1;
+    const shouldPrune = cacheWriteCount % 50 === 0;
     fs.mkdir(CACHE_DIR, { recursive: true })
       .then(() => fs.writeFile(cacheFilePath, outputBuffer))
+      .then(() => (shouldPrune ? pruneDiskCache() : null))
       .catch(() => {});
 
     res.set({

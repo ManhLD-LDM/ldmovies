@@ -1,5 +1,15 @@
 import User from '../models/User.js';
 
+const sendServerError = (res, error) =>
+  res.status(500).json(
+    process.env.NODE_ENV === 'production'
+      ? { message: 'Lỗi server' }
+      : { message: error.message }
+  );
+
+const safeStr = (val, maxLen = 300) => (typeof val === 'string' ? val.trim().slice(0, maxLen) : '');
+const safeNum = (val) => (Number.isFinite(Number(val)) && Number(val) >= 0 ? Number(val) : 0);
+
 // @desc    Lấy lịch sử xem phim
 // @route   GET /api/history
 // @access  Private
@@ -11,7 +21,7 @@ export const getHistory = async (req, res) => {
     }
     res.json(user.watchHistory || []);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -21,19 +31,21 @@ export const getHistory = async (req, res) => {
 export const syncHistoryItem = async (req, res) => {
   try {
     const item = req.body;
-    
-    if (!item.slug || !item.episodeName) {
+    const slug = safeStr(item?.slug, 300);
+    const episodeName = safeStr(item?.episodeName, 200);
+
+    if (!slug || !episodeName) {
       return res.status(400).json({ message: 'Thiếu thông tin phim' });
     }
 
     const newEntry = {
-      slug: item.slug,
-      type: item.type || 'movie',
-      name: item.name,
-      episodeName: item.episodeName,
-      progress: item.progress || 0,
-      duration: item.duration || 0,
-      poster: item.poster || '',
+      slug,
+      type: safeStr(item?.type, 50) || 'movie',
+      name: safeStr(item?.name, 300),
+      episodeName,
+      progress: safeNum(item?.progress),
+      duration: safeNum(item?.duration),
+      poster: safeStr(item?.poster, 1000),
       watchedAt: new Date(),
     };
 
@@ -52,8 +64,8 @@ export const syncHistoryItem = async (req, res) => {
                       cond: {
                         $not: {
                           $and: [
-                            { $eq: ['$$this.slug', item.slug] },
-                            { $eq: ['$$this.episodeName', item.episodeName] },
+                            { $eq: ['$$this.slug', slug] },
+                            { $eq: ['$$this.episodeName', episodeName] },
                           ],
                         },
                       },
@@ -70,7 +82,7 @@ export const syncHistoryItem = async (req, res) => {
 
     res.status(204).end();
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -93,7 +105,7 @@ export const deleteHistoryItem = async (req, res) => {
     
     res.json({ message: 'Đã xoá khỏi lịch sử' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -108,7 +120,7 @@ export const getComicHistory = async (req, res) => {
     }
     res.json(user.comicHistory || []);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -118,17 +130,19 @@ export const getComicHistory = async (req, res) => {
 export const syncComicHistoryItem = async (req, res) => {
   try {
     const item = req.body;
-    
-    if (!item.slug || !item.chapterName) {
+    const slug = safeStr(item?.slug, 300);
+    const chapterName = safeStr(item?.chapterName, 200);
+
+    if (!slug || !chapterName) {
       return res.status(400).json({ message: 'Thiếu thông tin truyện hoặc chương' });
     }
 
     const newEntry = {
-      slug: item.slug,
-      name: item.name,
-      chapterName: item.chapterName,
-      chapterId: item.chapterId || '',
-      poster: item.poster || '',
+      slug,
+      name: safeStr(item?.name, 300),
+      chapterName,
+      chapterId: safeStr(item?.chapterId, 200),
+      poster: safeStr(item?.poster, 1000),
       watchedAt: new Date(),
     };
 
@@ -143,7 +157,7 @@ export const syncComicHistoryItem = async (req, res) => {
                   {
                     $filter: {
                       input: { $ifNull: ['$comicHistory', []] },
-                      cond: { $not: { $eq: ['$$this.slug', item.slug] } },
+                      cond: { $not: { $eq: ['$$this.slug', slug] } },
                     },
                   },
                 ],
@@ -157,7 +171,7 @@ export const syncComicHistoryItem = async (req, res) => {
 
     res.status(204).end();
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -180,6 +194,6 @@ export const deleteComicHistoryItem = async (req, res) => {
     
     res.json({ message: 'Đã xoá khỏi lịch sử đọc truyện' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error);
   }
 };
