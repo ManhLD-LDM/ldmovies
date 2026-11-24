@@ -121,7 +121,16 @@ function encodeChapterId(comicSlug, chapterSlug, chapId) {
 }
 
 function decodeChapterId(composite = '') {
-  const parts = composite.split('--');
+  // Khớp từ phải sang trái để giữ nguyên dấu '-' cuối nếu comicSlug kết thúc bằng '-' (tạo thành '---')
+  const match = String(composite).match(/^(.+)--([a-z0-9][a-z0-9._-]*)--(\d+)$/i);
+  if (match) {
+    return {
+      comicSlug: match[1],
+      chapterSlug: match[2],
+      chapId: match[3],
+    };
+  }
+  const parts = String(composite).split('--');
   if (parts.length >= 3) {
     const chapId = parts.pop();
     const chapterSlug = parts.pop();

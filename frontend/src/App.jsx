@@ -43,8 +43,27 @@ function ScrollToTop() {
 }
 
 function App() {
+  const location = useLocation();
+
+  // Tự động tải lại trang (tối đa 1 lần trong 10s) nếu Vite gặp chunk hash cũ sau khi deploy
+  useEffect(() => {
+    const handlePreloadError = () => {
+      try {
+        const lastReload = Number(sessionStorage.getItem('ldmovies_chunk_reload_at') || 0);
+        if (!lastReload || Date.now() - lastReload > 10000) {
+          sessionStorage.setItem('ldmovies_chunk_reload_at', String(Date.now()));
+          window.location.reload();
+        }
+      } catch {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('vite:preloadError', handlePreloadError);
+    return () => window.removeEventListener('vite:preloadError', handlePreloadError);
+  }, []);
+
   return (
-    <ErrorBoundary>
+    <ErrorBoundary resetKey={`${location.pathname}${location.search}`}>
       <ScrollToTop />
       <Suspense fallback={<PageLoader />}>
         <Routes>
