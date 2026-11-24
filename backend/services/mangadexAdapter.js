@@ -23,7 +23,7 @@ function buildProxiedCoverUrl(mangaId, relationships = []) {
   const coverRel = relationships.find((r) => r.type === 'cover_art');
   const fileName = coverRel?.attributes?.fileName;
   if (!fileName) return '';
-  const rawCoverUrl = `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.512.jpg`;
+  const rawCoverUrl = `https://uploads.mangadex.org/covers/${mangaId}/${fileName}`;
   return `/api/img?url=${encodeURIComponent(rawCoverUrl)}&w=400&q=75`;
 }
 
@@ -49,30 +49,80 @@ function mapMangaListItem(manga) {
 export async function mdGetLatestComics(page = 1) {
   const numPage = Math.max(1, Number(page) || 1);
   const limit = 24;
-  const offset = (numPage - 1) * limit;
+  const chapOffset = (numPage - 1) * 60;
 
-  const { data } = await axios.get(`${MANGADEX_API}/manga`, {
+  // Query recent readable Vietnamese chapters directly so every comic has real chapters & latest updates
+  const { data: chapRes } = await axios.get(`${MANGADEX_API}/chapter`, {
     timeout: 12000,
     headers: MANGADEX_HEADERS,
     params: {
-      limit,
-      offset,
-      'availableTranslatedLanguage[]': 'vi',
-      'order[latestUploadedChapter]': 'desc',
+      limit: 100,
+      offset: chapOffset,
+      'translatedLanguage[]': 'vi',
+      'order[readableAt]': 'desc',
+      includeExternalUrl: 0,
+      'contentRating[]': ['safe', 'suggestive'],
+    },
+  });
+
+  const latestByManga = new Map();
+  for (const chap of chapRes?.data || []) {
+    const cAttrs = chap.attributes || {};
+    if (!cAttrs.pages || cAttrs.pages <= 0) continue;
+    const mangaRel = (chap.relationships || []).find((r) => r.type === 'manga');
+    if (!mangaRel?.id) continue;
+    if (!latestByManga.has(mangaRel.id)) {
+      latestByManga.set(mangaRel.id, {
+        chapterName: cAttrs.chapter ? String(cAttrs.chapter) : 'Oneshot',
+        updatedAt: cAttrs.readableAt || cAttrs.publishAt || new Date().toISOString(),
+      });
+    }
+    if (latestByManga.size >= limit) break;
+  }
+
+  const mangaIds = Array.from(latestByManga.keys());
+  if (mangaIds.length === 0) {
+    return {
+      status: 'success',
+      data: {
+        items: [],
+        pagination: { totalItems: 0, totalItemsPerPage: limit, currentPage: numPage },
+      },
+    };
+  }
+
+  const { data: mangaRes } = await axios.get(`${MANGADEX_API}/manga`, {
+    timeout: 12000,
+    headers: MANGADEX_HEADERS,
+    params: {
+      'ids[]': mangaIds,
+      limit: 100,
       'includes[]': 'cover_art',
       'contentRating[]': ['safe', 'suggestive'],
     },
   });
 
-  const items = (data?.data || []).map(mapMangaListItem);
-  const totalItems = Math.min(data?.total || items.length, 10000);
+  const mangaById = new Map((mangaRes?.data || []).map((m) => [m.id, m]));
+  const items = [];
+  for (const id of mangaIds) {
+    const manga = mangaById.get(id);
+    if (!manga) continue;
+    const mapped = mapMangaListItem(manga);
+    const chapInfo = latestByManga.get(id);
+    mapped.updatedAt = chapInfo.updatedAt;
+    mapped.chaptersLatest = [{ chapter_name: chapInfo.chapterName }];
+    items.push(mapped);
+  }
+
+  const totalChapters = Math.min(chapRes?.total || 2400, 10000);
+  const estimatedPages = Math.max(numPage, Math.ceil(totalChapters / 60));
 
   return {
     status: 'success',
     data: {
       items,
       pagination: {
-        totalItems,
+        totalItems: estimatedPages * limit,
         totalItemsPerPage: limit,
         currentPage: numPage,
       },
@@ -182,6 +232,7 @@ export async function mdGetComicDetails(compositeSlug) {
       headers: MANGADEX_HEADERS,
       params: {
         'translatedLanguage[]': 'vi',
+        includeExternalUrl: 0,
         limit: 500,
         'order[chapter]': 'asc',
         'contentRating[]': ['safe', 'suggestive'],
@@ -191,6 +242,24 @@ export async function mdGetComicDetails(compositeSlug) {
 
   const manga = mangaRes.data?.data;
   if (!manga) return null;
+
+  let feedData = feedRes.data?.data || [];
+
+  // Fallback to English readable chapters if Vietnamese feed has 0 direct readable chapters
+  if (!feedData.some((c) => c.attributes?.pages > 0)) {
+    const enFeedRes = await axios.get(`${MANGADEX_API}/manga/${encodeURIComponent(mangaId)}/feed`, {
+      timeout: 12000,
+      headers: MANGADEX_HEADERS,
+      params: {
+        'translatedLanguage[]': 'en',
+        includeExternalUrl: 0,
+        limit: 500,
+        'order[chapter]': 'asc',
+        'contentRating[]': ['safe', 'suggestive'],
+      },
+    });
+    feedData = enFeedRes.data?.data || [];
+  }
 
   const attrs = manga.attributes || {};
   const name = pickLocalizedText(attrs.title) || 'Không rõ tên';
@@ -211,7 +280,7 @@ export async function mdGetComicDetails(compositeSlug) {
 
   // Deduplicate chapters by chapter number, preferring entries with pages > 0
   const chapMap = new Map();
-  for (const chap of feedRes.data?.data || []) {
+  for (const chap of feedData) {
     const cAttrs = chap.attributes || {};
     if (!cAttrs.pages || cAttrs.pages <= 0) continue;
     const chapNum = cAttrs.chapter || 'Oneshot';

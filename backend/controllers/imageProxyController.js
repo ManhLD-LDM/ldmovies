@@ -74,7 +74,14 @@ export const proxyImage = async (req, res) => {
     const upstreamHeaders = {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     };
+    const isMangaDexHost =
+      target.hostname === 'uploads.mangadex.org' ||
+      target.hostname === 'mangadex.org' ||
+      target.hostname.endsWith('.mangadex.org') ||
+      target.hostname.endsWith('.mangadex.network');
+
     if (
       target.hostname === 'anhvip.xyz' ||
       target.hostname.endsWith('.anhvip.xyz') ||
@@ -82,14 +89,32 @@ export const proxyImage = async (req, res) => {
       target.hostname.endsWith('.doctruyen3qhub.club')
     ) {
       upstreamHeaders.Referer = 'https://doctruyen3qhub.club/';
+    } else if (isMangaDexHost) {
+      upstreamHeaders.Referer = 'https://mangadex.org/';
+      upstreamHeaders.Origin = 'https://mangadex.org';
     }
 
-    const upstream = await axios.get(target.href, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-      maxContentLength: 15 * 1024 * 1024, // 15MB limit
-      headers: upstreamHeaders,
-    });
+    let upstream;
+    try {
+      upstream = await axios.get(target.href, {
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        maxContentLength: 15 * 1024 * 1024, // 15MB limit
+        headers: upstreamHeaders,
+      });
+    } catch (fetchErr) {
+      const fallbackUrl = target.href.replace(/\.(512|256)\.jpg$/i, '');
+      if (isMangaDexHost && fallbackUrl !== target.href) {
+        upstream = await axios.get(fallbackUrl, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+          maxContentLength: 15 * 1024 * 1024,
+          headers: upstreamHeaders,
+        });
+      } else {
+        throw fetchErr;
+      }
+    }
 
     const pipeline = sharp(upstream.data).resize({ width, withoutEnlargement: true });
     const outputBuffer = format === 'avif'
@@ -110,7 +135,7 @@ export const proxyImage = async (req, res) => {
 
     return res.end(outputBuffer);
   } catch (err) {
-    console.error('[IMG-PROXY-ERROR]', err.message);
+    console.error('[IMG-PROXY-ERROR]', err.response?.status || '', req.query.url, err.message);
     return res.status(502).json({ message: 'Không thể xử lý hoặc tải ảnh từ nguồn' });
   }
 };
