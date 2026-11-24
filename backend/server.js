@@ -37,7 +37,8 @@ app.use(compression());
 
 // ─── Security Headers ─────────────────────────────────────────────────────────
 // Tắt contentSecurityPolicy để không chặn embed video từ domain ngoài
-app.use(helmet({ contentSecurityPolicy: false }));
+// Cho phép cross-origin resource để frontend khác domain tải được ảnh từ /api/img
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
 // Global: 500 req / 15 phút / IP cho toàn bộ API

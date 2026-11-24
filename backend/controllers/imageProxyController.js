@@ -66,6 +66,7 @@ export const proxyImage = async (req, res) => {
       res.set({
         'Content-Type': `image/${format}`,
         'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
         'X-Cache': 'HIT',
       });
       return res.end(cached);
@@ -150,6 +151,7 @@ export const proxyImage = async (req, res) => {
     res.set({
       'Content-Type': `image/${format}`,
       'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
       'X-Cache': 'MISS',
       'Content-Length': outputBuffer.length,
     });
