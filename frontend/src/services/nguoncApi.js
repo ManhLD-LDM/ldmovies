@@ -3,6 +3,15 @@ import axios from 'axios';
 const NGUONC_BASE_URL = 'https://phim.nguonc.com/api';
 export const NGUONC_SLUG_PREFIX = 'nc--';
 
+// Map slug thể loại từ KKPhim sang slug tương ứng của NguonC
+const CATEGORY_SLUG_MAP = {
+  'hai-huoc': 'phim-hai',
+  'am-nhac': 'phim-nhac',
+  'vien-tuong': 'khoa-hoc-vien-tuong',
+  'khoa-hoc': 'khoa-hoc-vien-tuong',
+  'than-thoai': 'gia-tuong',
+};
+
 const nguoncClient = axios.create({
   baseURL: NGUONC_BASE_URL,
   timeout: 10000,
@@ -103,6 +112,8 @@ const transformNguonCItem = (item, fallbackType = 'single') => {
     categoryList,
     country: countryNames,
     type: detectTypeFromNguonC(item, fallbackType),
+    tmdb: item.tmdb || null,
+    imdb: item.imdb || null,
     source: 'nguonc',
     modifiedTime: item.modified || item.created || null,
   };
@@ -172,14 +183,30 @@ export const nguoncApi = {
     };
   },
 
-  getByCategory: async (catSlug, page = 1) => {
-    const res = await getWithCache(`/films/the-loai/${encodeURIComponent(catSlug)}`, {
-      params: { page },
-    });
-    const items = res.data?.items || [];
+  getByCategory: async (catSlug, page = 1, pagesCount = 1) => {
+    const mappedSlug = CATEGORY_SLUG_MAP[catSlug] || catSlug;
+    const count = Math.max(1, Number(pagesCount) || 1);
+    const startPage = (Math.max(1, Number(page) || 1) - 1) * count + 1;
+    const pageNums = Array.from({ length: count }, (_, idx) => startPage + idx);
+
+    const responses = await Promise.all(
+      pageNums.map((p) =>
+        getWithCache(`/films/the-loai/${encodeURIComponent(mappedSlug)}`, {
+          params: { page: p },
+        })
+          .then((r) => r.data || null)
+          .catch(() => null)
+      )
+    );
+
+    const firstSuccess = responses.find((d) => d && Array.isArray(d.items));
+    const paginate = firstSuccess?.paginate || {};
+    const items = responses.flatMap((d) => (Array.isArray(d?.items) ? d.items : []));
+    const fallbackType = mappedSlug === 'hoat-hinh' ? 'hoathinh' : 'single';
+
     return {
-      data: items.map((item) => transformNguonCItem(item, 'single')),
-      paginate: res.data?.paginate || {},
+      data: items.map((item) => transformNguonCItem(item, fallbackType)),
+      paginate,
     };
   },
 

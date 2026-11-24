@@ -61,6 +61,8 @@ function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
   const seenSlugs = new Set();
   const seenTitles = new Set();
   const seenOrigins = new Set();
+  const seenTmdb = new Set();
+  const seenImdb = new Set();
   const merged = [];
 
   const addItem = (item) => {
@@ -71,14 +73,25 @@ function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
     const year = item.year || '';
     const titleKey = baseTitle ? `${baseTitle}|${year}` : '';
     const originKey = baseOrigin ? `${baseOrigin}|${year}` : '';
+    const tmdbKey = item.tmdb?.id
+      ? `${String(item.tmdb.type || '').toLowerCase()}:${item.tmdb.id}:s${Number(item.tmdb.season) || 1}`
+      : '';
+    const imdbKey =
+      item.imdb?.id && (item.type === 'single' || item.tmdb?.type === 'movie')
+        ? String(item.imdb.id).toLowerCase()
+        : '';
 
     if (baseSlug && seenSlugs.has(baseSlug)) return;
     if (titleKey && seenTitles.has(titleKey)) return;
     if (originKey && seenOrigins.has(originKey)) return;
+    if (tmdbKey && seenTmdb.has(tmdbKey)) return;
+    if (imdbKey && seenImdb.has(imdbKey)) return;
 
     if (baseSlug) seenSlugs.add(baseSlug);
     if (titleKey) seenTitles.add(titleKey);
     if (originKey) seenOrigins.add(originKey);
+    if (tmdbKey) seenTmdb.add(tmdbKey);
+    if (imdbKey) seenImdb.add(imdbKey);
     merged.push(item);
   };
 
@@ -107,6 +120,8 @@ const transformAnime = (item) => ({
   })) || [],
   country: item.country?.map(c => c.name) || [],
   type: item.type || 'single', // Store original type from API
+  tmdb: item.tmdb || null,
+  imdb: item.imdb || null,
 });
 
 // Predefined categories list
@@ -136,7 +151,11 @@ const CATEGORIES = [
   {"_id":"2276b29204c46f75064735477890afd6","name":"Thần Thoại","slug":"than-thoai"},
   {"_id":"37a7b38b6184a5ebd3c43015aa20709d","name":"Chính Kịch","slug":"chinh-kich"},
   {"_id":"268385d0de78827ff7bb25c35036ee2a","name":"Kinh Điển","slug":"kinh-dien"},
-  {"_id":"4f02d28224c0747511790d57fbb63a62","name":"Phim Ngắn","slug":"phim-ngan"}
+  {"_id":"4f02d28224c0747511790d57fbb63a62","name":"Phim Ngắn","slug":"phim-ngan"},
+  {"_id":"nc-gay-can","name":"Gây Cấn","slug":"gay-can"},
+  {"_id":"nc-gia-tuong","name":"Giả Tưởng","slug":"gia-tuong"},
+  {"_id":"nc-lang-man","name":"Lãng Mạn","slug":"lang-man"},
+  {"_id":"kk-tv-shows","name":"TV Shows","slug":"tv-shows"}
 ];
 
 export const kkphimApi = {
@@ -411,7 +430,7 @@ export const kkphimApi = {
         categoryObjects,
         page,
         limit,
-        (item) => item.type === 'single' || item.type === 'series'
+        (item) => item.type === 'single' || item.type === 'series' || item.type === 'tvshows'
       );
     } catch (error) {
       console.error('Error filtering movies:', error);
@@ -423,23 +442,24 @@ export const kkphimApi = {
   },
 };
 
-// Helper chung lấy song song 3 trang từ /v1/api/the-loai/:slug, khử trùng lặp và lọc theo loại + nhiều thể loại
+// Helper chung lấy song song 3 trang từ /v1/api/the-loai/:slug (hoặc tv-shows), gộp NguonC, khử trùng lặp và lọc theo loại + nhiều thể loại
 async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24, typeFilter) {
   const firstSlug = categoryObjects[0].slug;
   const startApiPage = (page - 1) * 3 + 1;
   const pagesToFetch = [startApiPage, startApiPage + 1, startApiPage + 2];
+  const kkEndpoint = firstSlug === 'tv-shows' ? '/v1/api/danh-sach/tv-shows' : `/v1/api/the-loai/${firstSlug}`;
 
   const [responses, ncRes] = await Promise.all([
     Promise.all(
       pagesToFetch.map((apiPage) =>
-        getWithCache(`/v1/api/the-loai/${firstSlug}`, {
+        getWithCache(kkEndpoint, {
           params: { page: apiPage, limit: 64 },
         }).catch(() => null)
       )
     ),
     categoryObjects.length === 1
-      ? nguoncApi.getByCategory(firstSlug, page).catch(() => ({ data: [] }))
-      : Promise.resolve({ data: [] }),
+      ? nguoncApi.getByCategory(firstSlug, page, 3).catch(() => ({ data: [], paginate: {} }))
+      : Promise.resolve({ data: [], paginate: {} }),
   ]);
 
   const seenKeys = new Set();
@@ -471,13 +491,18 @@ async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24,
     });
   }
 
-  const apiTotalPages = firstPagination?.totalPages || 1;
-  const totalPages = Math.max(1, Math.ceil(apiTotalPages / 3));
+  const apiTotalPages = firstPagination?.totalPages || 0;
+  const kkTotalPages = apiTotalPages > 0 ? Math.max(1, Math.ceil(apiTotalPages / 3)) : 0;
+  const ncTotalPages = ncRes?.paginate?.total_page
+    ? Math.max(1, Math.ceil(Number(ncRes.paginate.total_page) / 3))
+    : 0;
+  const totalPages = Math.max(1, kkTotalPages, ncTotalPages);
+
   const rawCount = rawItems.length;
-  const totalItems =
+  const kkTotalItems =
     filteredItems.length === 0
       ? 0
-      : totalPages === 1
+      : kkTotalPages <= 1
         ? filteredItems.length
         : Math.max(
             filteredItems.length,
@@ -487,11 +512,12 @@ async function fetchAndFilterByCategories(categoryObjects, page = 1, limit = 24,
   const kkTransformed = filteredItems.map(transformAnime);
   const ncFiltered = (ncRes?.data || []).filter(typeFilter);
   const finalData = mergeUniqueContent(kkTransformed, ncFiltered);
+  const ncTotalItems = Number(ncRes?.paginate?.total_items) || 0;
 
   return {
     data: finalData,
     pagination: {
-      totalItems: Math.max(totalItems, finalData.length),
+      totalItems: Math.max(kkTotalItems, ncTotalItems, finalData.length),
       totalItemsPerPage: finalData.length || limit,
       currentPage: page,
       totalPages,
