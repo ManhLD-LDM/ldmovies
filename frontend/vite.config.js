@@ -11,7 +11,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
-        globPatterns: ['**/*.{js,css,html,svg,woff2,png,jpg,jpeg}'],
+        globPatterns: ['**/*.{css,svg,woff2,png,jpg,jpeg}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/(phimimg\.com|img\.otruyenapi\.com|sv1\.otruyencdn\.com)\/.*/i,
@@ -28,7 +28,7 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /\/api\/(comics|img)\/.*/i,
+            urlPattern: /\/api\/comics\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'api-response-cache',

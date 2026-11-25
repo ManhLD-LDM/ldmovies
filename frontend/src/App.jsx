@@ -3,26 +3,52 @@ import { Route, Routes, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 
+// Tự động reload 1 lần nếu lazy chunk bị lệch hash sau khi deploy bản mới
+const lazyWithRetry = (importFn) =>
+  lazy(() =>
+    importFn().catch((err) => {
+      const msg = String(err?.message || err || '');
+      const isChunkErr =
+        /ChunkLoadError|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+          msg
+        );
+      if (isChunkErr) {
+        try {
+          const lastReload = Number(sessionStorage.getItem('ldmovies_chunk_reload_at') || 0);
+          if (!lastReload || Date.now() - lastReload > 10000) {
+            sessionStorage.setItem('ldmovies_chunk_reload_at', String(Date.now()));
+            window.location.reload();
+            return new Promise(() => {});
+          }
+        } catch {
+          window.location.reload();
+          return new Promise(() => {});
+        }
+      }
+      throw err;
+    })
+  );
+
 // Lazy load pages for better performance
-const AnimeDetailPage = lazy(() => import('./pages/AnimeDetailPage'));
-const AnimeFilterPage = lazy(() => import('./pages/AnimeFilterPage'));
-const AnimePage = lazy(() => import('./pages/AnimePage'));
-const FavouritesPage = lazy(() => import('./pages/FavouritesPage'));
-const HomePage = lazy(() => import('./pages/HomePage'));
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const MovieDetailPage = lazy(() => import('./pages/MovieDetailPage'));
-const MovieFilterPage = lazy(() => import('./pages/MovieFilterPage'));
-const MoviesPage = lazy(() => import('./pages/MoviesPage'));
-const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const HistoryPage = lazy(() => import('./pages/HistoryPage'));
-const RegisterPage = lazy(() => import('./pages/RegisterPage'));
-const SearchPage = lazy(() => import('./pages/SearchPage'));
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const AnimeDetailPage = lazyWithRetry(() => import('./pages/AnimeDetailPage'));
+const AnimeFilterPage = lazyWithRetry(() => import('./pages/AnimeFilterPage'));
+const AnimePage = lazyWithRetry(() => import('./pages/AnimePage'));
+const FavouritesPage = lazyWithRetry(() => import('./pages/FavouritesPage'));
+const HomePage = lazyWithRetry(() => import('./pages/HomePage'));
+const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
+const MovieDetailPage = lazyWithRetry(() => import('./pages/MovieDetailPage'));
+const MovieFilterPage = lazyWithRetry(() => import('./pages/MovieFilterPage'));
+const MoviesPage = lazyWithRetry(() => import('./pages/MoviesPage'));
+const ProfilePage = lazyWithRetry(() => import('./pages/ProfilePage'));
+const HistoryPage = lazyWithRetry(() => import('./pages/HistoryPage'));
+const RegisterPage = lazyWithRetry(() => import('./pages/RegisterPage'));
+const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'));
+const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
 
 // Lazy load comic pages
-const ComicHomePage = lazy(() => import('./pages/ComicHomePage'));
-const ComicDetailPage = lazy(() => import('./pages/ComicDetailPage'));
-const ComicReaderPage = lazy(() => import('./pages/ComicReaderPage'));
+const ComicHomePage = lazyWithRetry(() => import('./pages/ComicHomePage'));
+const ComicDetailPage = lazyWithRetry(() => import('./pages/ComicDetailPage'));
+const ComicReaderPage = lazyWithRetry(() => import('./pages/ComicReaderPage'));
 
 // Fallback loader while downloading chunks
 const PageLoader = () => (

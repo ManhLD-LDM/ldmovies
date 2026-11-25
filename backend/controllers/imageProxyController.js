@@ -162,7 +162,7 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
     upstream = await axios.get(`${relayUrl}/api/raw-img`, {
       params: { url: target.href },
       responseType: 'arraybuffer',
-      timeout: 20000,
+      timeout: 45000,
       maxContentLength: 15 * 1024 * 1024,
       maxRedirects: 0,
       httpsAgent: keepAliveAgent,
@@ -172,7 +172,7 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
     try {
       upstream = await axios.get(target.href, {
         responseType: 'arraybuffer',
-        timeout: 15000,
+        timeout: 30000,
         maxContentLength: 15 * 1024 * 1024,
         maxRedirects: 0,
         httpsAgent: keepAliveAgent,

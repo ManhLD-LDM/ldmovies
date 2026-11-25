@@ -31,6 +31,7 @@ function ComicReaderPage() {
   const [showChapterList, setShowChapterList] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [failedImages, setFailedImages] = useState({});
+  const [retryTokens, setRetryTokens] = useState({});
   const lastScrollY = useRef(0);
   
   const activeChapterRef = useRef(null);
@@ -126,6 +127,7 @@ function ComicReaderPage() {
         setLoading(true);
         setError(null);
         setFailedImages({});
+        setRetryTokens({});
         setScrollProgress(0);
         const chapData = await comicApi.getComicChapter(chapterId);
 
@@ -249,9 +251,11 @@ function ComicReaderPage() {
           const rawUrl = img.image_file?.startsWith('http')
             ? img.image_file
             : `${domain_cdn}/${imagePath}/${img.image_file}`;
-          const proxyUrl = dataSaver
+          const retryCount = retryTokens[index] || 0;
+          const baseProxyUrl = dataSaver
             ? `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&w=${targetWidth}&q=${targetQuality}`
             : `${API_BASE}/img?url=${encodeURIComponent(rawUrl)}&raw=1`;
+          const proxyUrl = retryCount > 0 ? `${baseProxyUrl}&_r=${retryCount}` : baseProxyUrl;
           const isFailed = failedImages[index];
 
           return (
@@ -264,6 +268,7 @@ function ComicReaderPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setFailedImages((prev) => ({ ...prev, [index]: false }));
+                      setRetryTokens((prev) => ({ ...prev, [index]: (prev[index] || 0) + 1 }));
                     }}
                     className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-full transition-colors"
                   >
@@ -276,12 +281,13 @@ function ComicReaderPage() {
                   src={proxyUrl}
                   alt={`Trang ${index + 1}`}
                   className="w-full h-auto object-contain select-none"
-                  loading={index < 2 ? "eager" : "lazy"}
+                  loading={index < 1 ? "eager" : "lazy"}
                   decoding="async"
-                  onError={(e) => {
-                    if (e.target.dataset.retriedRaw !== '1') {
-                      e.target.dataset.retriedRaw = '1';
-                      e.target.src = rawUrl;
+                  onError={() => {
+                    if (retryCount < 1) {
+                      setTimeout(() => {
+                        setRetryTokens((prev) => ({ ...prev, [index]: (prev[index] || 0) + 1 }));
+                      }, 1200);
                     } else {
                       setFailedImages((prev) => ({ ...prev, [index]: true }));
                     }
