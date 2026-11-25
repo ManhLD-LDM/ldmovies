@@ -163,17 +163,29 @@ const useWatchHistoryStore = create(
                     if (!token) return;
                     
                     if (!item || !item.slug || !item.episodeName) return;
-                    // fetch keepalive: request vẫn được gửi khi tab đang đóng / bị ẩn (axios thì không)
+                    // fetch keepalive: request vẫn được gửi khi tab đang đóng / bị ẩn (axios thì không).
+                    // Backend khác domain nên request cần CORS preflight; một số trình duyệt
+                    // không hỗ trợ keepalive + preflight → khi đó gửi lại bằng axios (trang còn sống).
                     const apiBase = import.meta.env.VITE_API_URL || '/api';
-                    const res = await fetch(`${apiBase}/history`, {
-                        method: 'POST',
-                        keepalive: true,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify(item),
-                    });
+                    let res = null;
+                    try {
+                        res = await fetch(`${apiBase}/history`, {
+                            method: 'POST',
+                            keepalive: true,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify(item),
+                        });
+                    } catch {
+                        res = null;
+                    }
+                    if (!res) {
+                        // axios interceptor tự xử lý 401
+                        await historyApi.syncItem(item);
+                        return;
+                    }
                     if (res.status === 401) {
                         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
                     }
