@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
 import { FiFilter, FiRefreshCw } from 'react-icons/fi';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import MovieGrid from '../components/MovieGrid';
+import MovieSection from '../components/MovieSection';
 import Pagination from '../components/Pagination';
 import { kkphimApi } from '../services/kkphimApi';
 import useDocumentTitle from '../utils/useDocumentTitle';
+
+const QUICK_ANIME_CATEGORIES = [
+  { label: 'Hành Động', slug: 'hanh-dong' },
+  { label: 'Phiêu Lưu', slug: 'phieu-luu' },
+  { label: 'Viễn Tưởng', slug: 'vien-tuong' },
+  { label: 'Hài Hước', slug: 'hai-huoc' },
+  { label: 'Học Đường', slug: 'hoc-duong' },
+  { label: 'Giả Tưởng', slug: 'gia-tuong' },
+  { label: 'Kinh Dị', slug: 'kinh-di' },
+  { label: 'Tình Cảm', slug: 'tinh-cam' },
+];
 
 function AnimePage() {
   useDocumentTitle('Kho Anime Vietsub Hay Nhất');
@@ -16,6 +28,7 @@ function AnimePage() {
   const activePage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
   const rawSort = searchParams.get('sort') || 'updated';
   const sortParam = ['updated', 'year_desc', 'year_asc'].includes(rawSort) ? rawSort : 'updated';
+  const showShowcases = activePage === 1 && sortParam === 'updated';
 
   const [animes, setAnimes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +36,12 @@ function AnimePage() {
   const [retryCount, setRetryCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(activePage);
   const [totalPages, setTotalPages] = useState(1);
+
+  const [showcases, setShowcases] = useState({
+    action: [],
+    adventure: [],
+  });
+  const [showcasesLoading, setShowcasesLoading] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -52,6 +71,31 @@ function AnimePage() {
     };
   }, [activePage, sortParam, retryCount]);
 
+  useEffect(() => {
+    if (!showShowcases) return undefined;
+    let isCancelled = false;
+
+    const fetchShowcases = async () => {
+      setShowcasesLoading(true);
+      const results = await Promise.allSettled([
+        kkphimApi.filterAnimeByCategories([{ slug: 'hanh-dong' }], 1, 12),
+        kkphimApi.filterAnimeByCategories([{ slug: 'phieu-luu' }], 1, 12),
+      ]);
+      if (isCancelled) return;
+
+      setShowcases({
+        action: results[0].status === 'fulfilled' ? (results[0].value?.data || []).slice(0, 12) : [],
+        adventure: results[1].status === 'fulfilled' ? (results[1].value?.data || []).slice(0, 12) : [],
+      });
+      setShowcasesLoading(false);
+    };
+
+    fetchShowcases();
+    return () => {
+      isCancelled = true;
+    };
+  }, [showShowcases, retryCount]);
+
   const handlePageChange = (newPage) => {
     navigate(`/anime?page=${newPage}${sortParam !== 'updated' ? `&sort=${sortParam}` : ''}`);
   };
@@ -64,7 +108,7 @@ function AnimePage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Page Title */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Anime Vietsub</h1>
@@ -92,6 +136,47 @@ function AnimePage() {
           </div>
         </div>
       </div>
+
+      {/* Quick Genre Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 border-b border-white/10 scrollbar-hide">
+        {QUICK_ANIME_CATEGORIES.map((cat) => (
+          <Link
+            key={cat.slug}
+            to={`/anime/filter?categories=${cat.slug}&page=1`}
+            className="shrink-0 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium bg-white/5 text-gray-300 border border-white/10 hover:border-primary-500/50 hover:text-white transition-colors"
+          >
+            {cat.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Curated Anime Showcases */}
+      {showShowcases && !error && (
+        <div className="mb-8 space-y-2">
+          <MovieSection
+            title="Anime Hành Động & Chiến Đấu"
+            movies={showcases.action}
+            loading={showcasesLoading}
+            viewAllLink="/anime/filter?categories=hanh-dong&page=1"
+            contentType="anime"
+          />
+          <MovieSection
+            title="Anime Phiêu Lưu & Giả Tưởng"
+            movies={showcases.adventure}
+            loading={showcasesLoading}
+            viewAllLink="/anime/filter?categories=phieu-luu&page=1"
+            contentType="anime"
+          />
+        </div>
+      )}
+
+      {/* Full Grid Section */}
+      {showShowcases && !error && (
+        <h2 className="text-2xl font-black text-white flex items-center gap-3 mb-6">
+          <span className="w-1 h-8 bg-gradient-to-b from-primary-500 to-primary-600 rounded-full" />
+          <span>Toàn Bộ Kho Anime</span>
+        </h2>
+      )}
 
       {/* Anime Grid / Error State */}
       {error ? (
