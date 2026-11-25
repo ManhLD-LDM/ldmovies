@@ -8,6 +8,18 @@
    ============================================ */
 
 :root {
+    /* Tailwind `primary-*` (RGB channels) — Phim: violet (giữ nguyên bảng màu cũ) */
+    --tw-primary-50: 250 245 255;
+    --tw-primary-100: 243 232 255;
+    --tw-primary-200: 233 213 255;
+    --tw-primary-300: 216 180 254;
+    --tw-primary-400: 192 132 252;
+    --tw-primary-500: 168 85 247;
+    --tw-primary-600: 147 51 234;
+    --tw-primary-700: 126 34 206;
+    --tw-primary-800: 107 33 168;
+    --tw-primary-900: 88 28 135;
+
     /* Primary - Purple Gradient */
     --primary-400: #A78BFA;
     --primary-500: #8B5CF6;
@@ -34,6 +46,30 @@
     --accent-gold: #FBBF24;
     --accent-green: #22C55E;
     --accent-red: #EF4444;
+}
+
+/* Chế độ Truyện Tranh: `primary-*` chuyển sang teal.
+   600–900 lùi 1 bậc (teal-700…950) để chữ trắng trên nút bg-primary-600 đạt tương phản ≥ 4.5:1. */
+html[data-mode='comic'] {
+    --tw-primary-50: 240 253 250;
+    --tw-primary-100: 204 251 241;
+    --tw-primary-200: 153 246 228;
+    --tw-primary-300: 94 234 212;
+    --tw-primary-400: 45 212 191;
+    --tw-primary-500: 20 184 166;
+    --tw-primary-600: 15 118 110;
+    --tw-primary-700: 17 94 89;
+    --tw-primary-800: 19 78 74;
+    --tw-primary-900: 4 47 46;
+
+    --primary-400: #2DD4BF;
+    --primary-500: #14B8A6;
+    --primary-600: #0F766E;
+    --primary-700: #115E59;
+
+    --surface-100: rgba(20, 184, 166, 0.05);
+    --surface-200: rgba(20, 184, 166, 0.08);
+    --surface-300: rgba(20, 184, 166, 0.12);
 }
 
 @layer base {

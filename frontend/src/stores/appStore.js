@@ -14,4 +14,21 @@ const useAppStore = create(
   )
 );
 
+// Gắn chế độ lên <html data-mode> để bảng màu `primary-*` (index.css) đổi violet ↔ teal.
+// Chạy ngay khi module load (trước lần render đầu) để không bị nháy màu sai,
+// với cùng quy tắc theo URL như Layout.
+if (typeof document !== 'undefined') {
+  const applyMode = (mode) => {
+    document.documentElement.dataset.mode = mode === 'comic' ? 'comic' : 'movie';
+  };
+  const path = window.location.pathname;
+  if (path.startsWith('/comics')) {
+    useAppStore.setState({ appMode: 'comic' });
+  } else if (path === '/' || /^\/(movies|anime|search)(\/|$)/.test(path)) {
+    useAppStore.setState({ appMode: 'movie' });
+  }
+  applyMode(useAppStore.getState().appMode);
+  useAppStore.subscribe((state) => applyMode(state.appMode));
+}
+
 export default useAppStore;

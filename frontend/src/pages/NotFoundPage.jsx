@@ -1,16 +1,19 @@
-import { FiArrowLeft, FiFilm, FiHome } from 'react-icons/fi';
+import { FiArrowLeft, FiBookOpen, FiFilm, FiHome } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
+import useAppStore from '../stores/appStore';
 import useDocumentTitle from '../utils/useDocumentTitle';
 
 function NotFoundPage() {
   useDocumentTitle('404 - Không Tìm Thấy Trang');
   const navigate = useNavigate();
+  const isComicMode = useAppStore((s) => s.appMode) === 'comic';
+  const ModeIcon = isComicMode ? FiBookOpen : FiFilm;
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center px-4 py-16">
       <div className="max-w-md w-full text-center bg-dark-200/80 border border-white/10 rounded-2xl p-8 shadow-2xl">
         <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary-500/15 border border-primary-500/30 flex items-center justify-center">
-          <FiFilm className="text-primary-400" size={36} />
+          <ModeIcon className="text-primary-400" size={36} />
         </div>
         <p className="text-sm font-bold uppercase tracking-widest text-primary-400 mb-2">
           Lỗi 404
@@ -23,7 +26,7 @@ function NotFoundPage() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            to="/"
+            to={isComicMode ? '/comics' : '/'}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-500 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-primary-600/30"
           >
             <FiHome size={18} />
