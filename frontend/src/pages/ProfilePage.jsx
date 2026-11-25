@@ -92,10 +92,16 @@ function ProfilePage() {
 
     setIsChangingPassword(true);
     try {
-      await userApi.changePassword({
+      const response = await userApi.changePassword({
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword,
       });
+      // Old token is invalidated server-side; keep the session alive with the new one
+      const newToken = response.data?.token;
+      if (newToken) {
+        localStorage.setItem('token', newToken);
+        useAuthStore.setState({ token: newToken, isAuthenticated: true });
+      }
       toast.success('Đổi mật khẩu thành công!');
       setShowChangePassword(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { authApi, userApi } from '../services/api';
 import useComicHistoryStore from './comicHistoryStore';
 import useFavoritesStore from './favoritesStore';
+import useWatchHistoryStore from './watchHistoryStore';
 
 function safeParseUser() {
   try {
@@ -113,6 +114,16 @@ const useAuthStore = create((set) => ({
     localStorage.removeItem('user');
     useFavoritesStore.getState().clearFavorites();
     useComicHistoryStore.getState().clearComicHistory();
+    // Watch history is persisted in localStorage — clear it so the next account
+    // on this device does not see (or merge) the previous user's history.
+    useWatchHistoryStore.getState().clearHistory();
+    try {
+      Object.keys(sessionStorage)
+        .filter((key) => key.startsWith('watching_'))
+        .forEach((key) => sessionStorage.removeItem(key));
+    } catch {
+      // sessionStorage may be unavailable in restricted contexts
+    }
     set({ user: null, token: null, isAuthenticated: false });
   },
 

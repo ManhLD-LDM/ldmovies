@@ -12,6 +12,9 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         globPatterns: ['**/*.{css,svg,woff2,png,jpg,jpeg}'],
+        // index.html is NOT precached (always fetched from network to avoid stale chunks),
+        // so the default navigateFallback ('index.html') would make the SW fail to install.
+        navigateFallback: null,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/(phimimg\.com|img\.otruyenapi\.com|sv1\.otruyencdn\.com)\/.*/i,

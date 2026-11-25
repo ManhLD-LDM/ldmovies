@@ -203,11 +203,25 @@ function VideoPlayer({
     const [savedProgress, setSavedProgress] = useState(0);
     const [autoNextCountdown, setAutoNextCountdown] = useState(null);
     const autoResumeRef = useRef(0);
+    // true while the "Tiếp tục xem?" prompt waits for an answer — block autoplay meanwhile
+    const resumePendingRef = useRef(false);
 
     const historyItemStr = JSON.stringify(historyItem);
 
+    // Reset fallback embed, error & auto-next khi chuyển tập / videoUrl thay đổi.
+    // PHẢI khai báo TRƯỚC effect resume bên dưới: React chạy effect theo thứ tự khai báo,
+    // nếu đặt sau thì nó sẽ xoá prompt / autoResume vừa được effect resume thiết lập.
+    useEffect(() => {
+        setUseFallbackEmbed(false);
+        setError(null);
+        setAutoNextCountdown(null);
+    }, [videoUrl]);
+
     // ── Xử lý Session và Resume Prompt ──────────────────────────────────────
     useEffect(() => {
+        autoResumeRef.current = 0;
+        resumePendingRef.current = false;
+        setShowResumePrompt(false);
         const item = historyItemStr ? JSON.parse(historyItemStr) : null;
         if (!item || !videoUrl) return;
 
@@ -231,6 +245,7 @@ function VideoPlayer({
             // Nếu có tiến trình > 5 giây và chưa xem hết (< duration - 10s)
             if (existingProgress > 5 && existingDuration > 0 && existingProgress < existingDuration - 10) {
                 setSavedProgress(existingProgress);
+                resumePendingRef.current = true;
                 setShowResumePrompt(true);
             } else {
                 sessionStorage.setItem(sessionKey, 'true');
@@ -319,15 +334,6 @@ function VideoPlayer({
         }
     }, [showControls]);
 
-    // Reset fallback embed, error, resume prompt & auto-next khi chuyển tập / videoUrl thay đổi
-    useEffect(() => {
-        setUseFallbackEmbed(false);
-        setError(null);
-        setShowResumePrompt(false);
-        setAutoNextCountdown(null);
-        autoResumeRef.current = 0;
-    }, [videoUrl]);
-
     // Đếm ngược tự động chuyển tập tiếp theo khi kết thúc tập
     useEffect(() => {
         if (autoNextCountdown === null) return;
@@ -407,7 +413,7 @@ function VideoPlayer({
                         video.currentTime = autoResumeRef.current;
                     }
                     setIsLoading(false);
-                    video.play().catch(e => console.log('Auto-play blocked:', e));
+                    if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
 
                     // Lọc và lưu danh sách chất lượng video (chỉ lấy 1080, 720, 480, 360 nếu có)
                     if (data.levels && data.levels.length > 0) {
@@ -477,7 +483,7 @@ function VideoPlayer({
                     if (initialTime > 0) video.currentTime = initialTime;
                     else if (autoResumeRef.current > 0) video.currentTime = autoResumeRef.current;
                     setIsLoading(false);
-                    video.play().catch(e => console.log('Auto-play blocked:', e));
+                    if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
                     video.removeEventListener('loadedmetadata', onMeta);
                 };
                 video.addEventListener('loadedmetadata', onMeta);
@@ -493,7 +499,7 @@ function VideoPlayer({
                     video.currentTime = initialTime > 0 ? initialTime : autoResumeRef.current;
                 }
                 setIsLoading(false);
-                video.play().catch(e => console.log('Auto-play blocked:', e));
+                if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
                 video.removeEventListener('loadedmetadata', onMeta);
             };
             video.addEventListener('loadedmetadata', onMeta);
@@ -1006,6 +1012,7 @@ function VideoPlayer({
                                         videoRef.current.play().catch(e => console.log('Auto-play failed:', e));
                                     }
                                     sessionStorage.setItem(`watching_${historyItem.slug}_${historyItem.episodeName}`, 'true');
+                                    resumePendingRef.current = false;
                                     setShowResumePrompt(false);
                                     setIsPlaying(true);
                                 }}
@@ -1021,6 +1028,7 @@ function VideoPlayer({
                                         videoRef.current.play().catch(e => console.log('Auto-play failed:', e));
                                     }
                                     sessionStorage.setItem(`watching_${historyItem.slug}_${historyItem.episodeName}`, 'true');
+                                    resumePendingRef.current = false;
                                     setShowResumePrompt(false);
                                     setIsPlaying(true);
                                 }}

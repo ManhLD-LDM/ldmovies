@@ -10,7 +10,7 @@ const useComicHistoryStore = create((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await historyApi.getComicHistory();
-      set({ comicHistory: response.data, isLoading: false });
+      set({ comicHistory: Array.isArray(response.data) ? response.data : [], isLoading: false });
     } catch (error) {
       set({ error: error.response?.data?.message || 'Failed to fetch history', isLoading: false });
     }
@@ -18,8 +18,15 @@ const useComicHistoryStore = create((set) => ({
 
   syncComicHistory: async (itemData) => {
     try {
-      const response = await historyApi.syncComicItem(itemData);
-      set({ comicHistory: response.data });
+      // Backend replies 204 (no body) — update the local list optimistically.
+      await historyApi.syncComicItem(itemData);
+      set((state) => {
+        const current = Array.isArray(state.comicHistory) ? state.comicHistory : [];
+        const entry = { ...itemData, watchedAt: new Date().toISOString() };
+        return {
+          comicHistory: [entry, ...current.filter((item) => item.slug !== itemData.slug)].slice(0, 50),
+        };
+      });
       return { success: true };
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to sync history';
