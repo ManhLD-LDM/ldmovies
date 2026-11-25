@@ -47,7 +47,7 @@ export const register = async (req, res) => {
         email: user.email,
         avatar: user.avatar,
         bio: user.bio,
-        token: generateToken(user._id),
+        token: generateToken(user),
       });
     }
   } catch (error) {
@@ -101,7 +101,7 @@ export const login = async (req, res) => {
       email: user.email,
       avatar: user.avatar,
       bio: user.bio,
-      token: generateToken(user._id),
+      token: generateToken(user),
     });
   } catch (error) {
     sendServerError(res, error);

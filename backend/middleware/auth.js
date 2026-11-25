@@ -14,11 +14,12 @@ export const protect = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     user = await User.findById(decoded.id).select('-password');
-    if (
-      user?.passwordChangedAt &&
-      decoded.iat &&
-      decoded.iat * 1000 < user.passwordChangedAt.getTime()
-    ) {
+    const changedAtMs = user?.passwordChangedAt ? user.passwordChangedAt.getTime() : 0;
+    const isStale =
+      typeof decoded.pca === 'number'
+        ? decoded.pca !== changedAtMs // token mới: so khớp chính xác thời điểm đổi mật khẩu
+        : Boolean(changedAtMs && decoded.iat && decoded.iat * 1000 < changedAtMs); // token cũ (chưa có pca)
+    if (user && isStale) {
       return res.status(401).json({ message: 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại' });
     }
   } catch (error) {

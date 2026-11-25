@@ -166,7 +166,7 @@ export const changePassword = async (req, res) => {
     // to keep the current session logged in.
     res.json({
       message: 'Đổi mật khẩu thành công',
-      token: generateToken(user._id),
+      token: generateToken(user),
     });
   } catch (error) {
     sendServerError(res, error);
