@@ -107,7 +107,7 @@ function ContinueWatching() {
                                 e.stopPropagation();
                                 removeFromHistory(item.slug, item.episodeName);
                             }}
-                            className="absolute top-2 right-2 p-1.5 glass-effect rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300 hover:bg-red-500/50"
+                            className="absolute top-2 right-2 p-1.5 glass-effect rounded-full before:absolute before:-inset-2 before:content-[''] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300 hover:bg-red-500/50"
                             aria-label="Xóa khỏi lịch sử"
                         >
                             <FiX size={14} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { FiArrowDown, FiArrowUp, FiBookOpen, FiHeart, FiPlay, FiRefreshCw, FiSearch, FiX } from 'react-icons/fi';
 import { toast } from 'react-toastify';
@@ -46,6 +46,7 @@ function ComicDetailPage() {
   );
 
   const { isAuthenticated } = useAuthStore();
+  const favoritePendingRef = useRef(false);
   const { comicHistory, fetchComicHistory } = useComicHistoryStore();
   const {
     isComicFavorited,
@@ -96,6 +97,8 @@ function ComicDetailPage() {
     : false;
 
   const handleToggleFavorite = async () => {
+    // Chặn bấm liên tiếp khi request trước chưa xong (tránh toast trùng / gửi 2 lần)
+    if (favoritePendingRef.current) return;
     if (!isAuthenticated) {
       toast.info('Vui lòng đăng nhập để lưu truyện');
       navigate('/login');
@@ -103,6 +106,8 @@ function ComicDetailPage() {
     }
 
     const comicId = comic.slug || comic._id;
+    favoritePendingRef.current = true;
+    try {
 
     if (isFavorited) {
       const existingFavoriteId = isComicFavorited(comic.slug)
@@ -127,6 +132,9 @@ function ComicDetailPage() {
       } else {
         toast.error(result.message);
       }
+    }
+    } finally {
+      favoritePendingRef.current = false;
     }
   };
 

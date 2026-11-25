@@ -70,7 +70,7 @@ function ComicSection({ title, comics, loading, viewAllLink, resolveImageUrl, on
           {viewAllLink && (
             <Link
               to={viewAllLink}
-              className="flex items-center gap-1 text-gray-400 hover:text-teal-400 transition-colors duration-200 group"
+              className="flex items-center gap-1 min-h-[44px] -my-3 text-gray-400 hover:text-teal-400 transition-colors duration-200 group"
             >
               <span className="text-sm font-medium">Xem tất cả</span>
               <FiChevronRight size={18} className="group-hover:translate-x-1 transition-transform duration-200" />

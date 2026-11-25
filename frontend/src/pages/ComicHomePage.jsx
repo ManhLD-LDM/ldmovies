@@ -454,7 +454,7 @@ function ComicHomePage() {
       <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 border-b border-white/5 scrollbar-hide">
         <Link
           to="/comics"
-          className={`shrink-0 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors border ${
+          className={`shrink-0 inline-flex items-center min-h-[44px] sm:min-h-0 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors border ${
             isDiscoveryHome
               ? 'bg-teal-500 text-black border-teal-400 font-semibold'
               : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/30 hover:text-white'
@@ -470,7 +470,7 @@ function ComicHomePage() {
             <Link
               key={g.slug}
               to={g.to}
-              className={`shrink-0 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors border ${
+              className={`shrink-0 inline-flex items-center min-h-[44px] sm:min-h-0 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors border ${
                 isActive
                   ? 'bg-teal-500 text-black border-teal-400 font-semibold'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-teal-400/40 hover:text-white'

@@ -245,8 +245,10 @@ function ProfilePage() {
               <p className="text-white font-medium">••••••••</p>
             </div>
             <button
+              type="button"
               onClick={() => setShowChangePassword(true)}
-              className="text-primary-500 hover:text-primary-400 text-sm"
+              aria-label="Thay đổi mật khẩu"
+              className="text-primary-500 hover:text-primary-400 text-sm min-h-[44px] px-3 -mr-3"
             >
               Thay đổi
             </button>
@@ -261,14 +263,19 @@ function ProfilePage() {
           onClick={() => setShowChangePassword(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-password-title"
             className="bg-dark-200 rounded-2xl p-8 max-w-md w-full border border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Đổi mật khẩu</h2>
+              <h2 id="change-password-title" className="text-2xl font-bold text-white">Đổi mật khẩu</h2>
               <button
+                type="button"
                 onClick={() => setShowChangePassword(false)}
-                className="text-gray-400 hover:text-white"
+                aria-label="Đóng"
+                className="w-11 h-11 -mr-2 flex items-center justify-center text-gray-400 hover:text-white"
               >
                 <FiX size={24} />
               </button>
@@ -277,13 +284,15 @@ function ProfilePage() {
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               {/* Current Password */}
               <div>
-                <label className="block text-gray-300 text-sm font-medium mb-2">
+                <label htmlFor="pw-current" className="block text-gray-300 text-sm font-medium mb-2">
                   Mật khẩu hiện tại
                 </label>
                 <div className="relative">
                   <input
                     type={showPasswords.current ? 'text' : 'password'}
+                    id="pw-current"
                     name="currentPassword"
+                    autoComplete="current-password"
                     value={passwordData.currentPassword}
                     onChange={handlePasswordChange}
                     className="w-full px-4 py-3 pr-12 bg-dark-300 border border-dark-400 rounded-lg text-white focus:outline-none focus:border-primary-500"
@@ -292,7 +301,9 @@ function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowPasswords({...showPasswords, current: !showPasswords.current})}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    aria-label={showPasswords.current ? 'Ẩn mật khẩu hiện tại' : 'Hiện mật khẩu hiện tại'}
+                    aria-controls="pw-current"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-gray-500 hover:text-gray-300"
                   >
                     {showPasswords.current ? <FiEyeOff /> : <FiEye />}
                   </button>
@@ -301,13 +312,15 @@ function ProfilePage() {
 
               {/* New Password */}
               <div>
-                <label className="block text-gray-300 text-sm font-medium mb-2">
+                <label htmlFor="pw-new" className="block text-gray-300 text-sm font-medium mb-2">
                   Mật khẩu mới
                 </label>
                 <div className="relative">
                   <input
                     type={showPasswords.new ? 'text' : 'password'}
+                    id="pw-new"
                     name="newPassword"
+                    autoComplete="new-password"
                     value={passwordData.newPassword}
                     onChange={handlePasswordChange}
                     className="w-full px-4 py-3 pr-12 bg-dark-300 border border-dark-400 rounded-lg text-white focus:outline-none focus:border-primary-500"
@@ -317,7 +330,9 @@ function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowPasswords({...showPasswords, new: !showPasswords.new})}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    aria-label={showPasswords.new ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}
+                    aria-controls="pw-new"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-gray-500 hover:text-gray-300"
                   >
                     {showPasswords.new ? <FiEyeOff /> : <FiEye />}
                   </button>
@@ -326,13 +341,15 @@ function ProfilePage() {
 
               {/* Confirm New Password */}
               <div>
-                <label className="block text-gray-300 text-sm font-medium mb-2">
+                <label htmlFor="pw-confirm" className="block text-gray-300 text-sm font-medium mb-2">
                   Xác nhận mật khẩu mới
                 </label>
                 <div className="relative">
                   <input
                     type={showPasswords.confirm ? 'text' : 'password'}
+                    id="pw-confirm"
                     name="confirmPassword"
+                    autoComplete="new-password"
                     value={passwordData.confirmPassword}
                     onChange={handlePasswordChange}
                     className="w-full px-4 py-3 pr-12 bg-dark-300 border border-dark-400 rounded-lg text-white focus:outline-none focus:border-primary-500"
@@ -341,7 +358,9 @@ function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowPasswords({...showPasswords, confirm: !showPasswords.confirm})}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    aria-label={showPasswords.confirm ? 'Ẩn xác nhận mật khẩu mới' : 'Hiện xác nhận mật khẩu mới'}
+                    aria-controls="pw-confirm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-gray-500 hover:text-gray-300"
                   >
                     {showPasswords.confirm ? <FiEyeOff /> : <FiEye />}
                   </button>

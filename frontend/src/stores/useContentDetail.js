@@ -293,13 +293,18 @@ export function useContentDetail(id) {
     };
 
     // ── Favorite toggle ────────────────────────────────────────────────────
+    const favoritePendingRef = useRef(false);
     const handleFavoriteToggle = async (contentId, contentData) => {
+        // Chặn bấm liên tiếp khi request trước chưa xong (tránh toast trùng / gửi 2 lần)
+        if (favoritePendingRef.current) return;
         if (!isAuthenticated) {
             toast.info('Vui lòng đăng nhập để lưu yêu thích');
             return;
         }
         if (!content) return;
 
+        favoritePendingRef.current = true;
+        try {
         if (isTrueAnime) {
             if (isFavorited) {
                 const result = await removeFavoriteAnime(contentId);
@@ -332,6 +337,9 @@ export function useContentDetail(id) {
                     ? toast.success('Đã thêm vào danh sách yêu thích')
                     : toast.error(result.message);
             }
+        }
+        } finally {
+            favoritePendingRef.current = false;
         }
     };
 

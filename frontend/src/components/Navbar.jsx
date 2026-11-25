@@ -400,6 +400,7 @@ function Navbar() {
                 <button
                   type="button"
                   onClick={() => handleSwitchMode('movie')}
+                  aria-pressed={appMode === 'movie'}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
                     appMode === 'movie'
                       ? 'bg-violet-600 text-white shadow-sm'
@@ -412,6 +413,7 @@ function Navbar() {
                 <button
                   type="button"
                   onClick={() => handleSwitchMode('comic')}
+                  aria-pressed={appMode === 'comic'}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
                     appMode === 'comic'
                       ? 'bg-teal-600 text-white shadow-sm'
@@ -555,8 +557,10 @@ function Navbar() {
           </button>
         </div>
 
-        {/* Mobile Menu Drawer */}
+        {/* Mobile Menu Drawer — khi đóng: inert + aria-hidden để Tab / trình đọc màn hình
+            không lọt vào các link đang ẩn (menu chỉ mờ đi chứ không display:none) */}
         <div
+          {...(!isMenuOpen ? { inert: '', 'aria-hidden': 'true' } : {})}
           className={`md:hidden transition-all duration-300 ease-in-out ${
             isMenuOpen
               ? 'max-h-[85vh] opacity-100 py-3 border-t border-white/10 overflow-visible'
@@ -627,6 +631,7 @@ function Navbar() {
               <button
                 type="button"
                 onClick={() => handleSwitchMode('movie')}
+                  aria-pressed={appMode === 'movie'}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
                   appMode === 'movie' ? 'bg-violet-600 text-white shadow-sm' : 'text-gray-400'
                 }`}
@@ -637,6 +642,7 @@ function Navbar() {
               <button
                 type="button"
                 onClick={() => handleSwitchMode('comic')}
+                  aria-pressed={appMode === 'comic'}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
                   appMode === 'comic' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-400'
                 }`}
