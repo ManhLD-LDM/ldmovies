@@ -1,12 +1,7 @@
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
-
-const sendServerError = (res, error) =>
-  res.status(500).json(
-    process.env.NODE_ENV === 'production'
-      ? { message: 'Lỗi server' }
-      : { message: 'Lỗi server', error: error.message }
-  );
+import { sendServerError } from '../utils/errors.js';
+import { generateToken } from '../utils/token.js';
 
 const isValidAvatar = (value) => {
   if (typeof value !== 'string') return false;
@@ -165,8 +160,11 @@ export const changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    // Old tokens are now invalid (passwordChangedAt), so hand back a fresh one
+    // to keep the current session logged in.
     res.json({
       message: 'Đổi mật khẩu thành công',
+      token: generateToken(user._id),
     });
   } catch (error) {
     sendServerError(res, error);

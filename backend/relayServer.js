@@ -19,6 +19,7 @@ import {
   scrapeLatestComics,
   scrapeSearchComics,
 } from './services/doctruyen3qScraper.js';
+import { isSafeSlug, parsePage, safeCacheSet } from './utils/cache.js';
 
 dotenv.config();
 
@@ -132,14 +133,14 @@ app.get('/api/comics/source-status', async (req, res) => {
 
 app.get('/api/comics/latest', async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const page = parsePage(req.query.page);
     const key = `relay_latest_${page}`;
     const cached = relayCache.get(key);
     if (cached) return res.json(cached);
 
     const data = await scrapeLatestComics(page);
     if (data?.data?.items?.length > 0) {
-      relayCache.set(key, data, 300);
+      safeCacheSet(relayCache, key, data, 300);
       return res.json(data);
     }
     return res.status(404).json({ message: 'No comics found' });
@@ -157,7 +158,7 @@ app.get('/api/comics/genres', async (req, res) => {
 
     const data = await scrapeGenres();
     if (data?.data?.items?.length > 0) {
-      relayCache.set(key, data, 86400);
+      safeCacheSet(relayCache, key, data, 86400);
       return res.json(data);
     }
     return res.status(404).json({ message: 'Genres not found' });
@@ -183,14 +184,15 @@ app.get('/api/comics/search', async (req, res) => {
 app.get('/api/comics/genre/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    if (!isSafeSlug(slug)) return res.status(400).json({ message: 'Invalid id' });
+    const page = parsePage(req.query.page);
     const key = `relay_genre_${slug}_${page}`;
     const cached = relayCache.get(key);
     if (cached) return res.json(cached);
 
     const data = await scrapeComicsByGenre(slug, page);
     if (data?.data?.items?.length > 0) {
-      relayCache.set(key, data, 600);
+      safeCacheSet(relayCache, key, data, 600);
       return res.json(data);
     }
     return res.status(404).json({ message: 'Category not found' });
@@ -203,13 +205,14 @@ app.get('/api/comics/genre/:slug', async (req, res) => {
 app.get('/api/comics/chapter/:chapterId', async (req, res) => {
   try {
     const { chapterId } = req.params;
+    if (!isSafeSlug(chapterId)) return res.status(400).json({ message: 'Invalid id' });
     const key = `relay_chap_${chapterId}`;
     const cached = relayCache.get(key);
     if (cached) return res.json(cached);
 
     const data = await scrapeComicChapter(chapterId);
     if (data) {
-      relayCache.set(key, data, 86400);
+      safeCacheSet(relayCache, key, data, 86400);
       return res.json(data);
     }
     return res.status(404).json({ message: 'Chapter not found' });
@@ -222,13 +225,14 @@ app.get('/api/comics/chapter/:chapterId', async (req, res) => {
 app.get('/api/comics/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
+    if (!isSafeSlug(slug)) return res.status(400).json({ message: 'Invalid id' });
     const key = `relay_detail_${slug}`;
     const cached = relayCache.get(key);
     if (cached) return res.json(cached);
 
     const data = await scrapeComicDetails(slug);
     if (data) {
-      relayCache.set(key, data, 600);
+      safeCacheSet(relayCache, key, data, 600);
       return res.json(data);
     }
     return res.status(404).json({ message: 'Comic not found' });

@@ -59,6 +59,16 @@ const authLimiter = rateLimit({
   message: { message: 'Quá nhiều yêu cầu xác thực, vui lòng thử lại sau 1 giờ' },
 });
 
+// Image proxy: mỗi trang truyện = 1 request, nên dùng limiter riêng rộng hơn
+// (chương 40–80 trang sẽ chạm trần 500 của apiLimiter chỉ sau vài chương).
+const imgLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 4000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Quá nhiều yêu cầu tải ảnh, vui lòng thử lại sau ít phút' },
+});
+
 // ─── Body Parser ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' })); // Giới hạn payload tối đa 10kb
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
@@ -87,7 +97,9 @@ app.use(
       if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
-      return callback(new Error('Not allowed by CORS'));
+      const corsErr = new Error('Not allowed by CORS');
+      corsErr.status = 403;
+      return callback(corsErr);
     },
     credentials: true,
   })
@@ -102,6 +114,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ─── Image proxy (own limiter, mounted before the global /api limiter) ────────
+app.use('/api/img', imgLimiter, imageRoutes);
+
 // ─── Apply Rate Limiters ──────────────────────────────────────────────────────
 app.use('/api', apiLimiter);
 
@@ -111,7 +126,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/comics', comicRoutes);
-app.use('/api/img', imageRoutes);
 
 // ─── 404 Handler cho /api routes không tồn tại ────────────────────────────────
 app.use('/api', (req, res) => {
@@ -165,7 +179,7 @@ if (fs.existsSync(distIndexHtml)) {
 
 // ─── Error Handling Middleware ────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = err.status || (res.statusCode === 200 ? 500 : res.statusCode);
   const isProd = process.env.NODE_ENV === 'production';
   res.status(statusCode).json({
     message: isProd && statusCode === 500 ? 'Lỗi server' : err.message,

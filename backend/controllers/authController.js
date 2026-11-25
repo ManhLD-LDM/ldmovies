@@ -1,20 +1,6 @@
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-
-const sendServerError = (res, error) =>
-  res.status(500).json(
-    process.env.NODE_ENV === 'production'
-      ? { message: 'Lỗi server' }
-      : { message: 'Lỗi server', error: error.message }
-  );
-
-// Tạo JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '7d',
-    algorithm: 'HS256',
-  });
-};
+import { sendServerError } from '../utils/errors.js';
+import { generateToken } from '../utils/token.js';
 
 // @desc    Đăng ký user mới
 // @route   POST /api/auth/register

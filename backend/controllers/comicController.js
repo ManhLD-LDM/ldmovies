@@ -9,6 +9,7 @@ import {
   scrapeLatestComics,
   scrapeSearchComics,
 } from '../services/doctruyen3qScraper.js';
+import { cleanKeyword, isSafeSlug, parsePage, safeCacheSet } from '../utils/cache.js';
 
 // Cache mặc định 5 phút cho danh sách mới, 10 phút cho chi tiết truyện, 24h cho chương (giới hạn maxKeys tránh tràn RAM 512MB)
 const myCache = new NodeCache({ stdTTL: 600, checkperiod: 120, maxKeys: 150, useClones: false });
@@ -67,7 +68,7 @@ export const getComicSourceStatus = async (req, res) => {
 
 export const getLatestComics = async (req, res) => {
   try {
-    const page = req.query.page || 1;
+    const page = parsePage(req.query.page);
     const cacheKey = `comics_latest_${page}`;
 
     const cachedData = myCache.get(cacheKey);
@@ -81,7 +82,7 @@ export const getLatestComics = async (req, res) => {
       : await scrapeLatestComics(page);
 
     if (result && result.data?.items?.length > 0) {
-      myCache.set(cacheKey, result, 300);
+      safeCacheSet(myCache, cacheKey, result, 300);
       return sendCached(res, result, 300);
     }
 
@@ -94,6 +95,9 @@ export const getLatestComics = async (req, res) => {
 export const getComicDetails = async (req, res) => {
   try {
     const { slug } = req.params;
+    if (!isSafeSlug(slug)) {
+      return res.status(400).json({ message: 'Invalid comic slug' });
+    }
     const cacheKey = `comic_detail_${slug}`;
 
     const cachedData = myCache.get(cacheKey);
@@ -107,7 +111,7 @@ export const getComicDetails = async (req, res) => {
       : await scrapeComicDetails(slug);
 
     if (result) {
-      myCache.set(cacheKey, result, 600);
+      safeCacheSet(myCache, cacheKey, result, 600);
       return sendCached(res, result, 600);
     }
 
@@ -120,6 +124,9 @@ export const getComicDetails = async (req, res) => {
 export const getComicChapter = async (req, res) => {
   try {
     const { chapterId } = req.params;
+    if (!isSafeSlug(chapterId)) {
+      return res.status(400).json({ message: 'Invalid chapter id' });
+    }
     const cacheKey = `comic_chapter_${chapterId}`;
 
     const cachedData = myCache.get(cacheKey);
@@ -133,7 +140,7 @@ export const getComicChapter = async (req, res) => {
       : await scrapeComicChapter(chapterId);
 
     if (data) {
-      myCache.set(cacheKey, data, 86400);
+      safeCacheSet(myCache, cacheKey, data, 86400);
       return sendCached(res, data, 86400);
     }
 
@@ -157,7 +164,7 @@ export const getGenres = async (req, res) => {
       : await scrapeGenres();
 
     if (data && data.data?.items?.length > 0) {
-      myCache.set(cacheKey, data, 86400);
+      safeCacheSet(myCache, cacheKey, data, 86400);
       return sendCached(res, data, 86400);
     }
 
@@ -170,7 +177,10 @@ export const getGenres = async (req, res) => {
 export const getComicsByGenre = async (req, res) => {
   try {
     const { slug } = req.params;
-    const page = req.query.page || 1;
+    if (!isSafeSlug(slug)) {
+      return res.status(400).json({ message: 'Invalid genre slug' });
+    }
+    const page = parsePage(req.query.page);
     const cacheKey = `comic_genre_${slug}_${page}`;
 
     const cachedData = myCache.get(cacheKey);
@@ -184,7 +194,7 @@ export const getComicsByGenre = async (req, res) => {
       : await scrapeComicsByGenre(slug, page);
 
     if (data && data.data?.items?.length > 0) {
-      myCache.set(cacheKey, data, 600);
+      safeCacheSet(myCache, cacheKey, data, 600);
       return sendCached(res, data, 600);
     }
 
@@ -196,7 +206,7 @@ export const getComicsByGenre = async (req, res) => {
 
 export const searchComics = async (req, res) => {
   try {
-    const { keyword } = req.query;
+    const keyword = cleanKeyword(req.query.keyword);
     if (!keyword) {
       return res.status(400).json({ message: 'Keyword is required' });
     }
