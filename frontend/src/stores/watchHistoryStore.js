@@ -163,7 +163,20 @@ const useWatchHistoryStore = create(
                     if (!token) return;
                     
                     if (!item || !item.slug || !item.episodeName) return;
-                    await historyApi.syncItem(item);
+                    // fetch keepalive: request vẫn được gửi khi tab đang đóng / bị ẩn (axios thì không)
+                    const apiBase = import.meta.env.VITE_API_URL || '/api';
+                    const res = await fetch(`${apiBase}/history`, {
+                        method: 'POST',
+                        keepalive: true,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify(item),
+                    });
+                    if (res.status === 401) {
+                        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                    }
                 } catch (error) {
                     console.error('Lỗi khi đồng bộ tiến trình lên server:', error);
                 }

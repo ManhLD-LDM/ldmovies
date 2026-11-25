@@ -32,6 +32,10 @@ function ComicReaderPage() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [failedImages, setFailedImages] = useState({});
   const [retryTokens, setRetryTokens] = useState({});
+  const [loadedImages, setLoadedImages] = useState({});
+  const [chapterRetry, setChapterRetry] = useState(0);
+  const [detailRetry, setDetailRetry] = useState(0);
+  const [detailError, setDetailError] = useState(false);
   const lastScrollY = useRef(0);
   
   const activeChapterRef = useRef(null);
@@ -106,19 +110,36 @@ function ComicReaderPage() {
   // Fetch thông tin truyện theo slug (chỉ gọi lại khi đổi truyện, không gọi lại mỗi khi chuyển chương)
   useEffect(() => {
     let isCancelled = false;
+    let retryTimer = null;
     if (!slug) return undefined;
-    comicApi
-      .getComicDetails(slug)
-      .then((cData) => {
-        if (!isCancelled && cData?.status === 'success') {
-          setComicData(cData.data);
-        }
-      })
-      .catch(() => {});
+    setDetailError(false);
+    const load = (attempt) => {
+      comicApi
+        .getComicDetails(slug)
+        .then((cData) => {
+          if (isCancelled) return;
+          if (cData?.status === 'success') {
+            setComicData(cData.data);
+          } else {
+            setDetailError(true);
+          }
+        })
+        .catch(() => {
+          if (isCancelled) return;
+          // Thử lại tự động 1 lần, sau đó hiện nút "Thử lại" trên thanh điều khiển
+          if (attempt === 0) {
+            retryTimer = setTimeout(() => load(1), 1500);
+          } else {
+            setDetailError(true);
+          }
+        });
+    };
+    load(0);
     return () => {
       isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [slug]);
+  }, [slug, detailRetry]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -128,6 +149,7 @@ function ComicReaderPage() {
         setError(null);
         setFailedImages({});
         setRetryTokens({});
+        setLoadedImages({});
         setScrollProgress(0);
         const chapData = await comicApi.getComicChapter(chapterId);
 
@@ -152,7 +174,7 @@ function ComicReaderPage() {
     return () => {
       isCancelled = true;
     };
-  }, [chapterId, slug]);
+  }, [chapterId, slug, chapterRetry]);
 
   let prevChapter = null;
   let nextChapter = null;
@@ -169,7 +191,10 @@ function ComicReaderPage() {
   // Keyboard shortcuts (ArrowLeft / ArrowRight) for switching chapters
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      // Alt+← / Alt+→ là Back/Forward của trình duyệt — không đè lên
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
       if (e.key === 'ArrowLeft' && prevChapter) {
         navigate(`/comics/${slug}/chapter/${extractChapterId(prevChapter)}`);
       } else if (e.key === 'ArrowRight' && nextChapter) {
@@ -194,9 +219,23 @@ function ComicReaderPage() {
     return (
       <div className="min-h-screen bg-black text-zinc-400 flex justify-center items-center flex-col gap-6">
         <p>{error || 'Đã xảy ra lỗi khi tải nội dung'}</p>
-        <button onClick={() => navigate(-1)} className="px-8 py-3 bg-white text-black font-medium rounded-full transition-transform hover:scale-105">
-          Quay lại
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setChapterRetry((c) => c + 1)}
+            className="inline-flex items-center gap-2 px-8 py-3 bg-white text-black font-medium rounded-full transition-transform hover:scale-105"
+          >
+            <FiRefreshCw size={16} />
+            Thử lại
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-full transition-colors"
+          >
+            Quay lại
+          </button>
+        </div>
       </div>
     );
   }
@@ -224,7 +263,7 @@ function ComicReaderPage() {
         className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${showToolbar ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-12 opacity-0 pointer-events-none'}`}
       >
         <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/10 rounded-full px-2 py-2 flex items-center gap-4 shadow-2xl">
-          <button onClick={() => navigate(`/comics/${slug}`)} className="w-10 h-10 flex justify-center items-center rounded-full hover:bg-white/10 transition-colors text-zinc-400 hover:text-white">
+          <button onClick={() => navigate(`/comics/${slug}`)} aria-label="Về trang truyện" className="w-10 h-10 flex justify-center items-center rounded-full hover:bg-white/10 transition-colors text-zinc-400 hover:text-white">
             <FiChevronLeft size={20} />
           </button>
           
@@ -233,7 +272,7 @@ function ComicReaderPage() {
             <p className="text-[11px] text-zinc-500">Chương {chapterData.item.chapter_name}</p>
           </div>
 
-          <Link to="/comics" className="w-10 h-10 flex justify-center items-center rounded-full hover:bg-white/10 transition-colors text-zinc-400 hover:text-white">
+          <Link to="/comics" aria-label="Trang chủ truyện" className="w-10 h-10 flex justify-center items-center rounded-full hover:bg-white/10 transition-colors text-zinc-400 hover:text-white">
             <FiHome size={18} />
           </Link>
         </div>
@@ -259,7 +298,7 @@ function ComicReaderPage() {
           const isFailed = failedImages[index];
 
           return (
-            <div key={`${chapterId}-${index}`} className="w-full relative flex items-center justify-center bg-black min-h-[600px]">
+            <div key={`${chapterId}-${index}`} className={`w-full relative flex items-center justify-center bg-black ${loadedImages[index] ? '' : 'min-h-[600px]'}`}>
               {isFailed ? (
                 <div className="py-12 px-4 text-center flex flex-col items-center gap-3 border border-white/10 rounded-xl my-4 bg-zinc-950 w-full max-w-md">
                   <p className="text-xs text-zinc-400">Không thể tải trang {index + 1}</p>
@@ -283,6 +322,7 @@ function ComicReaderPage() {
                   className="w-full h-auto object-contain select-none"
                   loading={index < 1 ? "eager" : "lazy"}
                   decoding="async"
+                  onLoad={() => setLoadedImages((prev) => (prev[index] ? prev : { ...prev, [index]: true }))}
                   onError={() => {
                     if (retryCount < 1) {
                       setTimeout(() => {
@@ -335,6 +375,17 @@ function ComicReaderPage() {
                 })}
               </div>
             </div>
+          )}
+
+          {detailError && !comicData && (
+            <button
+              type="button"
+              onClick={() => setDetailRetry((c) => c + 1)}
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#0A0A0A]/90 border border-white/10 rounded-full text-xs text-zinc-300 hover:text-white"
+            >
+              <FiRefreshCw size={12} />
+              Không tải được danh sách chương — Thử lại
+            </button>
           )}
 
           {/* Control Bar */}

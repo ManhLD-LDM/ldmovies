@@ -205,6 +205,11 @@ function VideoPlayer({
     const autoResumeRef = useRef(0);
     // true while the "Tiếp tục xem?" prompt waits for an answer — block autoplay meanwhile
     const resumePendingRef = useRef(false);
+    // Vị trí đang xem được giữ lại khi HLS bị dựng lại cho CÙNG videoUrl (đổi Data Saver, Thử tải lại, quay lại từ Embed)
+    const carryOverTimeRef = useRef({ url: null, time: 0 });
+    // Số lần đã thử tự hồi phục lỗi HLS fatal cho instance hiện tại
+    const hlsRecoverAttemptsRef = useRef(0);
+    const lastProgressSaveRef = useRef(0);
 
     const historyItemStr = JSON.stringify(historyItem);
 
@@ -261,35 +266,19 @@ function VideoPlayer({
         }
     }, [historyItemStr, videoUrl, initialTime, addToHistory]); // stringify obj để không re-run vô ích
 
-    // ── Ghi lại tiến trình xem ───────────────────────────────────────────────
-    useEffect(() => {
-        const item = historyItemStr ? JSON.parse(historyItemStr) : null;
-        if (!item) return;
-        
-        let lastSaveTime = 0;
-        const handleTimeUpdate = () => {
-            const video = videoRef.current;
-            if (!video) return;
-            
-            const now = Date.now();
-            // Cập nhật tiến trình mỗi 5 giây
-            if (now - lastSaveTime > 5000 && video.currentTime > 0) {
-                updateProgress(item.slug, item.episodeName, video.currentTime, video.duration);
-                lastSaveTime = now;
-            }
-        };
-
+    // ── Ghi lại tiến trình xem (qua prop onTimeUpdate của <video>, xem bên dưới) ──
+    // Dùng prop thay vì addEventListener để vẫn hoạt động khi <video> được mount lại
+    // (vd: chuyển Embed → "Thử lại HLS").
+    const handleProgressTimeUpdate = () => {
         const video = videoRef.current;
-        if (video) {
-            video.addEventListener('timeupdate', handleTimeUpdate);
+        if (!video || !historyItem) return;
+        const now = Date.now();
+        // Cập nhật tiến trình mỗi 5 giây
+        if (now - lastProgressSaveRef.current > 5000 && video.currentTime > 0) {
+            updateProgress(historyItem.slug, historyItem.episodeName, video.currentTime, video.duration);
+            lastProgressSaveRef.current = now;
         }
-        
-        return () => {
-            if (video) {
-                video.removeEventListener('timeupdate', handleTimeUpdate);
-            }
-        };
-    }, [historyItemStr, updateProgress]);
+    };
 
     // ── Sync history on unmount or beforeunload ──────────────────────────────
     useEffect(() => {
@@ -304,10 +293,17 @@ function VideoPlayer({
             }
         };
 
+        // Trên mobile, đóng tab/chuyển app thường không bắn beforeunload — sync khi tab bị ẩn
+        const onVisibilityHidden = () => {
+            if (document.visibilityState === 'hidden') syncToBackend();
+        };
+
         window.addEventListener('beforeunload', syncToBackend);
-        
+        document.addEventListener('visibilitychange', onVisibilityHidden);
+
         return () => {
             window.removeEventListener('beforeunload', syncToBackend);
+            document.removeEventListener('visibilitychange', onVisibilityHidden);
             syncToBackend(); // Sync on unmount
         };
     }, [historyItemStr, syncHistoryItemToBackend]);
@@ -368,6 +364,18 @@ function VideoPlayer({
         
         setError(null);
         setIsLoading(true);
+        hlsRecoverAttemptsRef.current = 0;
+
+        // Thứ tự ưu tiên vị trí bắt đầu: vị trí giữ lại (cùng videoUrl) > ?t= > auto-resume (F5)
+        const getStartTime = () => {
+            const carry = carryOverTimeRef.current;
+            if (carry.url === videoUrl && carry.time > 0) {
+                carryOverTimeRef.current = { url: null, time: 0 };
+                return carry.time;
+            }
+            if (initialTime > 0) return initialTime;
+            return autoResumeRef.current > 0 ? autoResumeRef.current : 0;
+        };
 
         // Cleanup HLS instance cũ nếu có
         if (hlsRef.current) {
@@ -406,12 +414,9 @@ function VideoPlayer({
                 });
 
                 hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-                    // Áp dụng initialTime sau khi manifest sẵn sàng
-                    if (initialTime > 0) {
-                        video.currentTime = initialTime;
-                    } else if (autoResumeRef.current > 0) {
-                        video.currentTime = autoResumeRef.current;
-                    }
+                    // Áp dụng vị trí bắt đầu sau khi manifest sẵn sàng
+                    const startTime = getStartTime();
+                    if (startTime > 0) video.currentTime = startTime;
                     setIsLoading(false);
                     if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
 
@@ -472,6 +477,19 @@ function VideoPlayer({
                 });
                 hls.on(Hls.Events.ERROR, (_, data) => {
                     if (data.fatal) {
+                        // Thử tự hồi phục tối đa 2 lần trước khi báo lỗi cho người dùng
+                        if (hlsRecoverAttemptsRef.current < 2) {
+                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                                hlsRecoverAttemptsRef.current += 1;
+                                hls.startLoad();
+                                return;
+                            }
+                            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                                hlsRecoverAttemptsRef.current += 1;
+                                hls.recoverMediaError();
+                                return;
+                            }
+                        }
                         setError('Không thể tải luồng video chính (HLS). Bạn có thể thử tải lại hoặc chuyển sang Server Dự Phòng.');
                         setIsLoading(false);
                     }
@@ -480,8 +498,8 @@ function VideoPlayer({
                 // Safari: hỗ trợ HLS native
                 video.src = videoUrl;
                 const onMeta = () => {
-                    if (initialTime > 0) video.currentTime = initialTime;
-                    else if (autoResumeRef.current > 0) video.currentTime = autoResumeRef.current;
+                    const startTime = getStartTime();
+                    if (startTime > 0) video.currentTime = startTime;
                     setIsLoading(false);
                     if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
                     video.removeEventListener('loadedmetadata', onMeta);
@@ -495,9 +513,8 @@ function VideoPlayer({
             // Direct video URL (mp4, webm, …)
             video.src = videoUrl;
             const onMeta = () => {
-                if (initialTime > 0 || autoResumeRef.current > 0) {
-                    video.currentTime = initialTime > 0 ? initialTime : autoResumeRef.current;
-                }
+                const startTime = getStartTime();
+                if (startTime > 0) video.currentTime = startTime;
                 setIsLoading(false);
                 if (!resumePendingRef.current) video.play().catch(e => console.log('Auto-play blocked:', e));
                 video.removeEventListener('loadedmetadata', onMeta);
@@ -507,6 +524,10 @@ function VideoPlayer({
 
         // Cleanup khi component unmount hoặc videoUrl thay đổi
         return () => {
+            // Giữ lại vị trí đang xem để lần dựng lại kế tiếp (cùng videoUrl) phát tiếp đúng chỗ
+            if (video.currentTime > 5) {
+                carryOverTimeRef.current = { url: videoUrl, time: video.currentTime };
+            }
             if (hlsRef.current) {
                 hlsRef.current.destroy();
                 hlsRef.current = null;
@@ -692,8 +713,10 @@ function VideoPlayer({
     // ── Keyboard shortcuts ─────────────────────────────────────────────────
     useEffect(() => {
         const handleKeyDown = (e) => {
-            // Do not trigger shortcuts if the user is typing in an input or textarea
-            if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') {
+            // Bỏ qua khi đang gõ chữ hoặc dùng tổ hợp phím của trình duyệt (Ctrl+F, Alt+←, …)
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const tag = e.target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
                 return;
             }
 
@@ -917,6 +940,7 @@ function VideoPlayer({
                 ref={videoRef}
                 className={`w-full h-full object-contain cursor-pointer ${roundedClass}`}
                 onClick={handleVideoClick}
+                onTimeUpdate={handleProgressTimeUpdate}
                 onLoadedMetadata={() => {
                     if (videoRef.current) {
                         videoRef.current.playbackRate = playbackRate;
@@ -1117,7 +1141,8 @@ function VideoPlayer({
                         {/* Play/Pause */}
                         <button
                             onClick={togglePlay}
-                            className="text-white hover:text-primary-500 transition-colors p-1.5 md:p-0 shrink-0"
+                            aria-label={isPlaying ? 'Tạm dừng' : 'Phát'}
+                            className="text-white hover:text-primary-500 transition-colors p-1.5 md:p-0 shrink-0 min-h-[44px] md:min-h-0 flex items-center justify-center"
                         >
                             {isPlaying
                                 ? <FiPause size={isMobile ? 20 : 24} />
@@ -1141,31 +1166,38 @@ function VideoPlayer({
                             </button>
                         )}
 
-                        {/* Skip backward */}
+                        {/* Skip backward/forward — ẩn trên mobile (đã có chạm đúp trái/phải để tua 5s) */}
+                        {!isMobile && (
                         <button
                             onClick={() => skip(-5)}
-                            className="text-white hover:text-primary-500 transition-colors flex items-center gap-1 p-2 md:p-0"
+                            className="text-white hover:text-primary-500 transition-colors flex items-center justify-center gap-1 p-2 md:p-0 min-h-[44px] md:min-h-0"
                             title="Lùi 5 giây"
+                            aria-label="Lùi 5 giây"
                         >
                             <FiRotateCcw size={isMobile ? 18 : 20} />
-                            {!isMobile && <span className="text-xs">5s</span>}
+                            <span className="text-xs">5s</span>
                         </button>
+                        )}
 
                         {/* Skip forward */}
+                        {!isMobile && (
                         <button
                             onClick={() => skip(5)}
-                            className="text-white hover:text-primary-500 transition-colors flex items-center gap-1 p-2 md:p-0"
+                            className="text-white hover:text-primary-500 transition-colors flex items-center justify-center gap-1 p-2 md:p-0 min-h-[44px] md:min-h-0"
                             title="Tiến 5 giây"
+                            aria-label="Tiến 5 giây"
                         >
                             <FiRotateCw size={isMobile ? 18 : 20} />
-                            {!isMobile && <span className="text-xs">5s</span>}
+                            <span className="text-xs">5s</span>
                         </button>
+                        )}
 
                         {/* Skip Intro 90s */}
                         <button
                             onClick={(e) => { e.stopPropagation(); skip(90); }}
                             className="text-white hover:text-primary-500 transition-colors flex items-center gap-1 p-1 md:p-0 ml-1"
                             title="Bỏ qua Opening (90s)"
+                            aria-label="Bỏ qua Opening 90 giây"
                         >
                             <span className="text-[10px] md:text-xs font-bold border border-white/50 rounded px-1.5 py-0.5 bg-black/40 hover:bg-white/20 hover:border-white transition-all">
                                 +90s
@@ -1177,6 +1209,7 @@ function VideoPlayer({
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={toggleMute}
+                                    aria-label={isMuted || volume === 0 ? 'Bật tiếng' : 'Tắt tiếng'}
                                     className="text-white hover:text-primary-500 transition-colors"
                                 >
                                     {isMuted || volume === 0
@@ -1190,6 +1223,7 @@ function VideoPlayer({
                                     step="0.1"
                                     value={isMuted ? 0 : volume}
                                     onChange={handleVolumeChange}
+                                    aria-label="Âm lượng"
                                     className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                                 />
                             </div>
@@ -1209,6 +1243,8 @@ function VideoPlayer({
                                 }}
                                 className="text-white hover:text-primary-500 transition-colors text-[10px] md:text-xs font-semibold px-2 py-1 bg-black/40 rounded hover:bg-white/20"
                                 title="Tốc độ phát"
+                                aria-label={`Tốc độ phát ${playbackRate}x`}
+                                aria-expanded={showSpeedMenu}
                             >
                                 {playbackRate}x
                             </button>
@@ -1239,11 +1275,14 @@ function VideoPlayer({
                                     }}
                                     className="text-white hover:text-primary-500 transition-colors text-[10px] md:text-xs font-semibold px-2 py-1 bg-black/40 rounded hover:bg-white/20 flex items-center gap-1"
                                     title="Chất lượng video"
+                                    aria-label="Chất lượng video"
+                                    aria-expanded={showQualityMenu}
                                 >
-                                    <FiSettings size={isMobile ? 12 : 14} />
-                                    {isAutoQuality 
-                                        ? `Auto${levels.find(l => l.originalIndex === currentLevel) ? ` (${levels.find(l => l.originalIndex === currentLevel).height}p)` : ''}` 
-                                        : `${levels.find(l => l.originalIndex === currentLevel)?.height || ''}p`}
+                                    <FiSettings size={isMobile ? 14 : 14} />
+                                    {/* Mobile: chỉ hiện icon để thanh điều khiển không bị chồng chữ ở 375px */}
+                                    {!isMobile && (isAutoQuality
+                                        ? `Auto${levels.find(l => l.originalIndex === currentLevel) ? ` (${levels.find(l => l.originalIndex === currentLevel).height}p)` : ''}`
+                                        : `${levels.find(l => l.originalIndex === currentLevel)?.height || ''}p`)}
                                 </button>
                                 {showQualityMenu && (
                                     <div className="absolute bottom-full left-0 md:right-0 md:left-auto mb-2 w-28 bg-black/90 border border-white/20 rounded-lg shadow-xl overflow-hidden z-50">
@@ -1270,8 +1309,9 @@ function VideoPlayer({
                         {/* Fullscreen */}
                         <button
                             onClick={toggleFullscreen}
-                            className="text-white hover:text-primary-500 transition-colors p-2 md:p-1"
+                            className="text-white hover:text-primary-500 transition-colors p-2 md:p-1 min-h-[44px] md:min-h-0 flex items-center justify-center"
                             title={isFullscreen ? 'Thu nhỏ' : 'Phóng to'}
+                            aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
                         >
                             {isFullscreen
                                 ? <FiMinimize size={isMobile ? 24 : 24} />
