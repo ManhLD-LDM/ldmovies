@@ -88,9 +88,14 @@ function Navbar() {
   const location = useLocation();
   const debounceTimeout = useRef(null);
 
-  const { user, isAuthenticated, logout } = useAuthStore();
-  const { appMode, setAppMode } = useAppStore();
-  const { enabled: dataSaverEnabled, toggle: toggleDataSaver } = useDataSaverStore();
+  // Selector từng field: không re-render Navbar khi isLoading/error của store đổi
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const logout = useAuthStore((s) => s.logout);
+  const appMode = useAppStore((s) => s.appMode);
+  const setAppMode = useAppStore((s) => s.setAppMode);
+  const dataSaverEnabled = useDataSaverStore((s) => s.enabled);
+  const toggleDataSaver = useDataSaverStore((s) => s.toggle);
 
   const isDetailPage =
     (/^\/(movies|anime)\/[^/]+$/.test(location.pathname) &&

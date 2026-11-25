@@ -8,9 +8,11 @@ import Navbar from './Navbar';
 
 function Layout() {
   const location = useLocation();
-  const { setAppMode } = useAppStore();
-  const { isAuthenticated } = useAuthStore();
-  const { fetchHistoryFromBackend } = useWatchHistoryStore();
+  // Selector từng field: Layout re-render sẽ kéo theo cả trang trong <Outlet>,
+  // nên không subscribe toàn bộ store (watchHistory đổi mỗi 5s khi đang xem phim).
+  const setAppMode = useAppStore((s) => s.setAppMode);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const fetchHistoryFromBackend = useWatchHistoryStore((s) => s.fetchHistoryFromBackend);
 
   useEffect(() => {
     if (isAuthenticated) {

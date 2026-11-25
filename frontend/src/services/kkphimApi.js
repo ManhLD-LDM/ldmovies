@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createCachedGet } from '../utils/requestCache.js';
 import { nguoncApi, NGUONC_SLUG_PREFIX } from './nguoncApi.js';
 
 // PhimAPI - Primary Movie & Anime API (merged with NguonC)
@@ -7,27 +8,14 @@ const CDN_IMAGE_URL = 'https://phimimg.com';
 
 const phimApiClient = axios.create({
   baseURL: PHIMAPI_BASE_URL,
+  timeout: 12000, // tránh spinner vô hạn khi phimapi treo
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Simple in-memory cache for API responses
-const apiCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-const getWithCache = async (url, config = {}) => {
-  const cacheKey = url + JSON.stringify(config.params || {});
-  const cached = apiCache.get(cacheKey);
-  
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.response;
-  }
-  
-  const response = await phimApiClient.get(url, config);
-  apiCache.set(cacheKey, { timestamp: Date.now(), response });
-  return response;
-};
+// Cache 5 phút + gộp request trùng đang bay + giới hạn 300 key
+const getWithCache = createCachedGet(phimApiClient, { ttl: 5 * 60 * 1000, maxEntries: 300 });
 
 // Chuẩn hóa URL ảnh từ PhimAPI
 export const formatImageUrl = (url) => {
@@ -99,6 +87,14 @@ function mergeUniqueContent(primaryItems = [], secondaryItems = []) {
   secondaryItems.forEach(addItem);
   return merged;
 }
+
+// Khi MỌI nguồn đều lỗi (mất mạng, cả 2 API sập) thì ném lỗi để trang hiện "Thử lại"
+// thay vì hiển thị danh sách rỗng như thể không có kết quả.
+const throwIfAllFailed = (results) => {
+  if (results.length > 0 && results.every((r) => r.status === 'rejected')) {
+    throw results[0].reason;
+  }
+};
 
 const sortByModifiedDesc = (items = []) =>
   [...items].sort((a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0));
@@ -251,6 +247,7 @@ export const kkphimApi = {
         ? Promise.resolve({ data: [], paginate: null })
         : nguoncApi.getByCategory('hoat-hinh', page, 2),
     ]);
+    throwIfAllFailed(sort === 'year_asc' ? [kkRes] : [kkRes, ncRes]);
 
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'hoathinh' })) || [];
@@ -286,6 +283,7 @@ export const kkphimApi = {
       getWithCache(`/v1/api/danh-sach/phim-le`, { params: { page, limit } }),
       nguoncApi.getMovies(page),
     ]);
+    throwIfAllFailed([kkRes, ncRes]);
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'single' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
@@ -304,6 +302,7 @@ export const kkphimApi = {
       getWithCache(`/v1/api/danh-sach/phim-bo`, { params: { page, limit } }),
       nguoncApi.getTVSeries(page),
     ]);
+    throwIfAllFailed([kkRes, ncRes]);
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map((item) => ({ ...transformAnime(item), type: item.type || 'series' })) || [];
     const ncItems = ncRes.status === 'fulfilled' ? ncRes.value.data || [] : [];
@@ -325,6 +324,7 @@ export const kkphimApi = {
         nguoncApi.getMovies(page),
         nguoncApi.getTVSeries(page),
       ]);
+      throwIfAllFailed([moviesRes, seriesRes, ncMoviesRes, ncSeriesRes]);
 
       const moviesData =
         moviesRes.status === 'fulfilled'
@@ -353,7 +353,7 @@ export const kkphimApi = {
       };
     } catch (error) {
       console.error('Error fetching movies and series:', error);
-      return { data: [], pagination: {} };
+      throw error;
     }
   },
 
@@ -363,6 +363,7 @@ export const kkphimApi = {
       getWithCache(`/v1/api/tim-kiem`, { params: { keyword } }),
       nguoncApi.search(keyword),
     ]);
+    throwIfAllFailed([kkRes, ncRes]);
 
     const kkData = kkRes.status === 'fulfilled' ? kkRes.value.data?.data : null;
     const kkItems = kkData?.items?.map(transformAnime) || [];
@@ -381,7 +382,7 @@ export const kkphimApi = {
     }
 
     try {
-      const response = await getWithCache(`/phim/${slug}`);
+      const response = await getWithCache(`/phim/${encodeURIComponent(slug)}`);
       const movie = response.data?.movie;
       const episodes = response.data?.episodes || [];
 
@@ -471,6 +472,37 @@ export const kkphimApi = {
         pagination: { totalItems: 0, totalItemsPerPage: limit, currentPage: page, totalPages: 1 },
       };
     }
+  },
+
+  // Lightweight preview for showcases / recommendations: few items of one genre.
+  // Movies: 1 KK page (48) + 1 NguonC page. Anime: 2 KK pages (64) since anime is a small
+  // share of each genre listing. (filter*ByCategories fetches 3 KK + 3 NguonC pages.)
+  getCategoryPreview: async (slug, kind = 'movie', limit = 12) => {
+    const isAnime = kind === 'anime';
+    const typeFilter = isAnime
+      ? (item) => item.type === 'hoathinh'
+      : (item) => item.type === 'single' || item.type === 'series' || item.type === 'tvshows';
+    const endpoint = slug === 'tv-shows' ? '/v1/api/danh-sach/tv-shows' : `/v1/api/the-loai/${slug}`;
+    const kkPages = isAnime ? [1, 2] : [1];
+    const perPage = isAnime ? 64 : 48;
+
+    const results = await Promise.allSettled([
+      ...kkPages.map((page) => getWithCache(endpoint, { params: { page, limit: perPage } })),
+      nguoncApi.getByCategory(slug, 1, 1),
+    ]);
+    if (results.every((r) => r.status === 'rejected')) {
+      throw results[0].reason;
+    }
+
+    const ncResult = results[results.length - 1];
+    const kkItems = results
+      .slice(0, kkPages.length)
+      .flatMap((r) => (r.status === 'fulfilled' ? r.value.data?.data?.items || [] : []))
+      .filter(typeFilter)
+      .map(transformAnime);
+    const ncItems = ncResult.status === 'fulfilled' ? (ncResult.value.data || []).filter(typeFilter) : [];
+
+    return { data: mergeUniqueContent(kkItems, ncItems).slice(0, limit) };
   },
 
   // Get all categories/tags for movies

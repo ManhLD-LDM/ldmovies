@@ -219,10 +219,10 @@ function FavouritesPage() {
       return;
     }
     if (isComicMode) {
-      fetchFavoriteComics();
+      fetchFavoriteComics(true);
     } else {
-      fetchFavoriteMovies();
-      fetchFavoriteAnime();
+      fetchFavoriteMovies(true);
+      fetchFavoriteAnime(true);
     }
   }, [isAuthenticated, isComicMode, navigate, fetchFavoriteMovies, fetchFavoriteAnime, fetchFavoriteComics]);
 

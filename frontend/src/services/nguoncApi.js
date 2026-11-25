@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createCachedGet } from '../utils/requestCache.js';
 
 const NGUONC_BASE_URL = 'https://phim.nguonc.com/api';
 export const NGUONC_SLUG_PREFIX = 'nc--';
@@ -20,19 +21,8 @@ const nguoncClient = axios.create({
   },
 });
 
-const nguoncCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
-
-const getWithCache = async (url, config = {}) => {
-  const key = url + JSON.stringify(config.params || {});
-  const cached = nguoncCache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.response;
-  }
-  const response = await nguoncClient.get(url, config);
-  nguoncCache.set(key, { timestamp: Date.now(), response });
-  return response;
-};
+// Cache 5 phút + gộp request trùng đang bay + giới hạn 300 key
+const getWithCache = createCachedGet(nguoncClient, { ttl: 5 * 60 * 1000, maxEntries: 300 });
 
 const toSlug = (str = '') =>
   str

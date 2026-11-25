@@ -96,13 +96,15 @@ function ComicHomePage() {
     }
   }, [isAuthenticated, isDiscoveryHome, fetchComicHistory]);
 
-  // Tự động chuyển slide hero
+  // Tự động chuyển slide hero — chỉ khi hero đang hiển thị (Discovery Home),
+  // tránh re-render cả trang mỗi 6s ở chế độ tìm kiếm / thể loại / phân trang
   useEffect(() => {
+    if (!isDiscoveryHome) return undefined;
     const timer = setInterval(() => {
       setHeroIndex((prev) => (prev + 1) % 3);
     }, 6000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isDiscoveryHome]);
 
   // Fetch thể loại một lần
   useEffect(() => {

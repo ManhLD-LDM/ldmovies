@@ -29,6 +29,7 @@ function SearchPage() {
     if (!query.trim()) {
       setRawResults([]);
       setError(false);
+      setLoading(false); // request trước (nếu đang chạy) đã bị huỷ — không để spinner kẹt
       return;
     }
 

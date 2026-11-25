@@ -43,7 +43,7 @@ function ComicReaderPage() {
   const listBtnRef = useRef(null);
 
   const { isAuthenticated } = useAuthStore();
-  const { syncComicHistory } = useComicHistoryStore();
+  const syncComicHistory = useComicHistoryStore((s) => s.syncComicHistory);
   const dataSaver = useDataSaverStore((state) => state.enabled);
   const lastSyncedRef = useRef(null);
 

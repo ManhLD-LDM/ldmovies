@@ -78,8 +78,8 @@ function AnimePage() {
     const fetchShowcases = async () => {
       setShowcasesLoading(true);
       const results = await Promise.allSettled([
-        kkphimApi.filterAnimeByCategories([{ slug: 'hanh-dong' }], 1, 12),
-        kkphimApi.filterAnimeByCategories([{ slug: 'phieu-luu' }], 1, 12),
+        kkphimApi.getCategoryPreview('hanh-dong', 'anime', 12),
+        kkphimApi.getCategoryPreview('phieu-luu', 'anime', 12),
       ]);
       if (isCancelled) return;
 

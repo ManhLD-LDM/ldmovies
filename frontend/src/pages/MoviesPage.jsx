@@ -93,7 +93,7 @@ function MoviesPage() {
       const results = await Promise.allSettled([
         kkphimApi.getAllMovies(1, 12),
         kkphimApi.getAllTVSeries(1, 12),
-        kkphimApi.filterMoviesByCategories([{ slug: 'hanh-dong' }], 1, 12),
+        kkphimApi.getCategoryPreview('hanh-dong', 'movie', 12),
       ]);
       if (isCancelled) return;
 

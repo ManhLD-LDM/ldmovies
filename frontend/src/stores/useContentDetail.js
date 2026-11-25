@@ -147,8 +147,8 @@ export function useContentDetail(id) {
                         if (matchedCatObjects.length > 0) {
                             const isAnime = content.type === 'hoathinh';
                             const genreRes = isAnime
-                                ? await kkphimApi.filterAnimeByCategories([matchedCatObjects[0]], 1, 24)
-                                : await kkphimApi.filterMoviesByCategories([matchedCatObjects[0]], 1, 24);
+                                ? await kkphimApi.getCategoryPreview(matchedCatObjects[0].slug, 'anime', 24)
+                                : await kkphimApi.getCategoryPreview(matchedCatObjects[0].slug, 'movie', 24);
                             if (isCancelled) return;
 
                             const franchiseSlugs = new Set(franchiseItems.map(f => f.slug));

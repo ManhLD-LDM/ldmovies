@@ -198,7 +198,10 @@ function VideoPlayer({
     const dataSaverEnabled = useDataSaverStore((state) => state.enabled);
 
     // History and Resume Prompt states
-    const { addToHistory, updateProgress, syncHistoryItemToBackend } = useWatchHistoryStore();
+    // Chỉ lấy action (ổn định) — không subscribe watchHistory, vốn đổi mỗi 5s khi đang phát
+    const addToHistory = useWatchHistoryStore((s) => s.addToHistory);
+    const updateProgress = useWatchHistoryStore((s) => s.updateProgress);
+    const syncHistoryItemToBackend = useWatchHistoryStore((s) => s.syncHistoryItemToBackend);
     const [showResumePrompt, setShowResumePrompt] = useState(false);
     const [savedProgress, setSavedProgress] = useState(0);
     const [autoNextCountdown, setAutoNextCountdown] = useState(null);
