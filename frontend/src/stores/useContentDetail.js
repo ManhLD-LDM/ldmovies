@@ -15,6 +15,23 @@ function getFranchiseKeyword(name, originName) {
     return wordOnly.length >= 3 ? wordOnly : null;
 }
 
+// Tìm tập theo tên/slug; nếu không khớp chính xác thì so theo SỐ tập.
+// Cần vì mỗi nguồn đặt tên khác nhau: KKPhim "Tập 01", NguonC "1". Khi KKPhim lỗi và trang
+// fallback sang NguonC, ?ep=Tập 01 / lịch sử xem vẫn phải mở đúng tập.
+const episodeNumberKey = (value) => {
+    const str = String(value ?? '').trim().toLowerCase();
+    const match = str.match(/\d+/);
+    return match ? String(Number(match[0])) : str;
+};
+
+export function findEpisodeIndex(episodes, nameOrSlug) {
+    if (!nameOrSlug || !Array.isArray(episodes)) return -1;
+    const exact = episodes.findIndex((ep) => ep.name === nameOrSlug || ep.slug === nameOrSlug);
+    if (exact >= 0) return exact;
+    const key = episodeNumberKey(nameOrSlug);
+    return episodes.findIndex((ep) => episodeNumberKey(ep.name) === key);
+}
+
 /**
  * Shared hook cho MovieDetailPage & AnimeDetailPage.
  * Xử lý fetch phim, sync URL params, favorite, deep link,
@@ -193,9 +210,7 @@ export function useContentDetail(id) {
         const timeParam = parseInt(searchParams.get('t') || '0', 10);
 
         if (episodeParam && episodes.length > 0) {
-            const urlEpisode = episodes.find(
-                ep => ep.name === episodeParam || ep.slug === episodeParam
-            );
+            const urlEpisode = episodes[findEpisodeIndex(episodes, episodeParam)];
             if (urlEpisode) {
                 setSelectedEpisode(urlEpisode);
                 setShowPlayer(true);
@@ -210,9 +225,7 @@ export function useContentDetail(id) {
                 let targetEpisode = episodes[0];
 
                 if (historyItem?.episodeName) {
-                    const historyEpIndex = episodes.findIndex(
-                        ep => ep.name === historyItem.episodeName || ep.slug === historyItem.episodeName
-                    );
+                    const historyEpIndex = findEpisodeIndex(episodes, historyItem.episodeName);
                     if (historyEpIndex >= 0) {
                         targetEpisode = episodes[historyEpIndex];
                         const isFinished = historyItem.duration > 0 && (historyItem.duration - historyItem.progress < 10);
@@ -233,9 +246,7 @@ export function useContentDetail(id) {
                 const watchHistory = useWatchHistoryStore.getState().watchHistory;
                 const historyItem = watchHistory.find(h => h.slug === id || h.id === id);
                 if (historyItem && historyItem.episodeName) {
-                    const historyEpIndex = episodes.findIndex(
-                        ep => ep.name === historyItem.episodeName || ep.slug === historyItem.episodeName
-                    );
+                    const historyEpIndex = findEpisodeIndex(episodes, historyItem.episodeName);
                     
                     if (historyEpIndex >= 0) {
                         let targetEpisode = episodes[historyEpIndex];
