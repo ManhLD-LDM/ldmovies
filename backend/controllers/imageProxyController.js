@@ -1,15 +1,18 @@
 import axios from 'axios';
 import crypto from 'crypto';
+import dns from 'dns';
 import fs from 'fs/promises';
 import https from 'https';
+import net from 'net';
 import path from 'path';
 import sharp from 'sharp';
 
-// Tắt cache nội bộ của libvips và giới hạn thread để tránh tràn RAM 512MB trên Render
+// Tắt cache nội bộ của libvips và giới hạn thread để giữ RAM thấp ổn định
 sharp.cache(false);
 sharp.concurrency(1);
 
-const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 12 });
+// Ép IPv4 + Keep-Alive giúp kết nối nhanh & ổn định tới các CDN truyện tại Việt Nam
+const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 16, family: 4 });
 
 const ALLOWED_HOSTS = new Set([
   'sv1.otruyencdn.com',
@@ -34,12 +37,50 @@ const isAllowedHost = (hostname = '') => {
   );
 };
 
+function isPrivateOrReservedIp(ip = '') {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT / Tailscale
+    if (a >= 224) return true;
+    return false;
+  }
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower === '::' || lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) {
+      return true;
+    }
+    if (lower.startsWith('::ffff:')) {
+      return isPrivateOrReservedIp(lower.slice(7));
+    }
+    return false;
+  }
+  return true;
+}
+
+async function assertPublicDns(hostname) {
+  if (net.isIP(hostname)) {
+    if (isPrivateOrReservedIp(hostname)) throw new Error('Blocked private IP');
+    return;
+  }
+  const records = await dns.promises.lookup(hostname, { all: true });
+  if (!records || records.length === 0) throw new Error('DNS lookup returned no addresses');
+  for (const rec of records) {
+    if (isPrivateOrReservedIp(rec.address)) {
+      throw new Error('Blocked private/internal resolved IP');
+    }
+  }
+}
+
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'img');
 const MAX_CACHE_FILES = 500;
 const EVICT_TARGET_FILES = 350;
 let cacheWriteCount = 0;
 
-// Giới hạn tối đa 2 tác vụ sharp chạy đồng thời để tránh OOM khi nhiều ảnh tải cùng lúc
+// Giới hạn tối đa 2 tác vụ sharp chạy đồng thời để tránh tăng vọt RAM khi bật Data Saver
 const MAX_SHARP_CONCURRENCY = 2;
 let activeSharpJobs = 0;
 const sharpWaitQueue = [];
@@ -58,7 +99,7 @@ const withSharpSlot = async (fn) => {
   }
 };
 
-// Gom các request trùng nhau đang tải để chỉ fetch upstream 1 lần
+// Gom các request nén ảnh trùng nhau đang tải để chỉ fetch upstream 1 lần
 const inFlightRequests = new Map();
 
 const SAFE_IMAGE_TYPE_MAP = {
@@ -127,7 +168,7 @@ const writeToDiskCache = (hash, ext, buffer) => {
     .catch(() => {});
 };
 
-async function fetchAndProcessImage({ target, width, quality, format, isRaw, cacheHash }) {
+function buildUpstreamContext(target) {
   const upstreamHeaders = {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -153,6 +194,65 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
     upstreamHeaders.Referer = 'https://mangadex.org/';
     upstreamHeaders.Origin = 'https://mangadex.org';
   }
+
+  return { upstreamHeaders, isMangaDexHost, isDocTruyen3QHost };
+}
+
+async function streamRawImage(target, res) {
+  await assertPublicDns(target.hostname);
+  const { upstreamHeaders, isDocTruyen3QHost } = buildUpstreamContext(target);
+  const relayUrl = (process.env.COMIC_RELAY_URL || '').replace(/\/+$/, '');
+  const relaySecret = process.env.COMIC_RELAY_SECRET || '';
+
+  const useRelay = isDocTruyen3QHost && Boolean(relayUrl);
+  const upstream = await axios.get(useRelay ? `${relayUrl}/api/raw-img` : target.href, {
+    ...(useRelay ? { params: { url: target.href } } : {}),
+    responseType: 'stream',
+    timeout: 45000,
+    maxContentLength: 15 * 1024 * 1024,
+    maxRedirects: 0,
+    httpsAgent: keepAliveAgent,
+    headers: useRelay ? (relaySecret ? { 'x-relay-secret': relaySecret } : {}) : upstreamHeaders,
+  });
+
+  const rawContentType = String(upstream.headers['content-type'] || '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  const safeExt = SAFE_IMAGE_TYPE_MAP[rawContentType];
+  if (!safeExt) {
+    upstream.data.destroy();
+    throw new Error(`Unsupported upstream content-type: ${rawContentType || 'unknown'}`);
+  }
+
+  const outHeaders = {
+    'Content-Type': EXT_TO_MIME[safeExt],
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Cache': 'STREAM',
+  };
+  if (upstream.headers['content-length']) {
+    outHeaders['Content-Length'] = upstream.headers['content-length'];
+  }
+
+  res.set(outHeaders);
+  res.on('close', () => {
+    if (!res.writableEnded) upstream.data.destroy();
+  });
+  upstream.data.on('error', () => {
+    if (!res.headersSent) {
+      res.status(502).end();
+    } else {
+      res.end();
+    }
+  });
+  upstream.data.pipe(res);
+}
+
+async function fetchAndProcessImage({ target, width, quality, format, isRaw, cacheHash }) {
+  await assertPublicDns(target.hostname);
+  const { upstreamHeaders, isMangaDexHost, isDocTruyen3QHost } = buildUpstreamContext(target);
 
   const relayUrl = (process.env.COMIC_RELAY_URL || '').replace(/\/+$/, '');
   const relaySecret = process.env.COMIC_RELAY_SECRET || '';
@@ -183,7 +283,7 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
       if (isMangaDexHost && fallbackUrl !== target.href) {
         upstream = await axios.get(fallbackUrl, {
           responseType: 'arraybuffer',
-          timeout: 15000,
+          timeout: 30000,
           maxContentLength: 15 * 1024 * 1024,
           maxRedirects: 0,
           httpsAgent: keepAliveAgent,
@@ -249,6 +349,13 @@ export const proxyImage = async (req, res) => {
     }
 
     const isRaw = raw === '1';
+
+    // Chế độ raw=1: stream trực tiếp từ upstream ra client (gần như 0MB RAM, không đệm buffer lớn)
+    if (isRaw) {
+      await streamRawImage(target, res);
+      return;
+    }
+
     const width = Math.min(Math.max(parseInt(w, 10) || 720, 100), 1280);
     const quality = Math.min(Math.max(parseInt(q, 10) || 60, 20), 85);
     const format = fmt === 'avif' ? 'avif' : 'webp';
@@ -289,6 +396,9 @@ export const proxyImage = async (req, res) => {
     return res.end(buffer);
   } catch (err) {
     console.error('[IMG-PROXY-ERROR]', err.response?.status || '', req.query.url, err.message);
-    return res.status(502).json({ message: 'Không thể xử lý hoặc tải ảnh từ nguồn' });
+    if (!res.headersSent) {
+      return res.status(502).json({ message: 'Không thể xử lý hoặc tải ảnh từ nguồn' });
+    }
+    return res.end();
   }
 };

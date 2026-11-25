@@ -73,6 +73,7 @@ const allowedOrigins = new Set([
   'https://ldmovies.vercel.app',
   'https://ldmovies.mydrpet.io.vn',
   'http://ldmovies.mydrpet.io.vn',
+  'https://aegis-server.tail0eba70.ts.net',
   ...extraCorsOrigins,
   ...(process.env.NODE_ENV !== 'production'
     ? ['http://localhost:3000', 'http://localhost:5173']
@@ -184,6 +185,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`[SERVER] Đang chạy trên port ${PORT} | Mode: ${process.env.NODE_ENV || 'development'}`);
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`[SERVER] Đang chạy trên ${HOST}:${PORT} | Mode: ${process.env.NODE_ENV || 'development'}`);
 });
