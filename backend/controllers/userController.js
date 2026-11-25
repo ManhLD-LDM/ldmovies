@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { sendServerError } from '../utils/errors.js';
 import { generateToken } from '../utils/token.js';
@@ -74,7 +75,8 @@ export const updateUserProfile = async (req, res) => {
     if (nextUsername && nextUsername !== user.username) {
       const usernameExists = await User.findOne({
         username: nextUsername,
-        _id: { $ne: user._id },
+        // trusted(): sanitizeFilter would otherwise turn $ne into a literal $eq match
+        _id: mongoose.trusted({ $ne: user._id }),
       });
 
       if (usernameExists) {

@@ -11,8 +11,7 @@ import sharp from 'sharp';
 sharp.cache(false);
 sharp.concurrency(1);
 
-// Ép IPv4 + Keep-Alive giúp kết nối nhanh & ổn định tới các CDN truyện tại Việt Nam
-const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 16, family: 4 });
+const MAX_UPSTREAM_BYTES = 15 * 1024 * 1024;
 
 const ALLOWED_HOSTS = new Set([
   'sv1.otruyencdn.com',
@@ -61,6 +60,31 @@ function isPrivateOrReservedIp(ip = '') {
   return true;
 }
 
+// DNS lookup used by the HTTPS agent: the private-IP check runs on the exact
+// addresses the socket connects to, closing the gap between assertPublicDns()
+// and axios' own lookup (DNS rebinding).
+function safeLookup(hostname, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  const opts = typeof options === 'number' ? { family: options } : { ...(options || {}) };
+  dns.lookup(hostname, { ...opts, all: true }, (err, addresses) => {
+    if (err) return callback(err);
+    const list = Array.isArray(addresses) ? addresses : [];
+    if (list.length === 0 || list.some((a) => isPrivateOrReservedIp(a.address))) {
+      const blocked = new Error('Blocked private/internal resolved IP');
+      blocked.code = 'EBLOCKEDIP';
+      return callback(blocked);
+    }
+    if (opts.all) return callback(null, list);
+    return callback(null, list[0].address, list[0].family);
+  });
+}
+
+// Ép IPv4 + Keep-Alive giúp kết nối nhanh & ổn định tới các CDN truyện tại Việt Nam
+const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 16, family: 4, lookup: safeLookup });
+
 async function assertPublicDns(hostname) {
   if (net.isIP(hostname)) {
     if (isPrivateOrReservedIp(hostname)) throw new Error('Blocked private IP');
@@ -80,24 +104,28 @@ const MAX_CACHE_FILES = 500;
 const EVICT_TARGET_FILES = 350;
 let cacheWriteCount = 0;
 
-// Giới hạn tối đa 2 tác vụ sharp chạy đồng thời để tránh tăng vọt RAM khi bật Data Saver
-const MAX_SHARP_CONCURRENCY = 2;
-let activeSharpJobs = 0;
-const sharpWaitQueue = [];
-
-const withSharpSlot = async (fn) => {
-  if (activeSharpJobs >= MAX_SHARP_CONCURRENCY) {
-    await new Promise((resolve) => sharpWaitQueue.push(resolve));
-  }
-  activeSharpJobs += 1;
-  try {
-    return await fn();
-  } finally {
-    activeSharpJobs -= 1;
-    const next = sharpWaitQueue.shift();
-    if (next) next();
-  }
+// Semaphore đơn giản: giới hạn số tác vụ chạy đồng thời
+const createSlotLimiter = (max) => {
+  let active = 0;
+  const waitQueue = [];
+  return async (fn) => {
+    if (active >= max) {
+      await new Promise((resolve) => waitQueue.push(resolve));
+    }
+    active += 1;
+    try {
+      return await fn();
+    } finally {
+      active -= 1;
+      const next = waitQueue.shift();
+      if (next) next();
+    }
+  };
 };
+
+// Tối đa 2 tác vụ sharp và 4 lượt tải buffer (≤15MB mỗi lượt) cùng lúc để giữ RAM < 512MB
+const withSharpSlot = createSlotLimiter(2);
+const withFetchSlot = createSlotLimiter(4);
 
 // Gom các request nén ảnh trùng nhau đang tải để chỉ fetch upstream 1 lần
 const inFlightRequests = new Map();
@@ -232,13 +260,31 @@ async function streamRawImage(target, res) {
     'X-Content-Type-Options': 'nosniff',
     'X-Cache': 'STREAM',
   };
-  if (upstream.headers['content-length']) {
-    outHeaders['Content-Length'] = upstream.headers['content-length'];
+  const declaredLength = Number(upstream.headers['content-length']) || 0;
+  if (declaredLength > MAX_UPSTREAM_BYTES) {
+    upstream.data.destroy();
+    throw new Error(`Upstream image too large: ${declaredLength} bytes`);
+  }
+  if (declaredLength > 0) {
+    outHeaders['Content-Length'] = String(declaredLength);
   }
 
   res.set(outHeaders);
   res.on('close', () => {
     if (!res.writableEnded) upstream.data.destroy();
+  });
+
+  // axios không áp maxContentLength cho responseType 'stream' — tự đếm byte,
+  // và cắt kết nối nếu upstream im lặng quá 60s sau khi đã trả header.
+  let streamedBytes = 0;
+  upstream.data.on('data', (chunk) => {
+    streamedBytes += chunk.length;
+    if (streamedBytes > MAX_UPSTREAM_BYTES) {
+      upstream.data.destroy(new Error('Upstream image exceeded size limit'));
+    }
+  });
+  upstream.data.setTimeout?.(60000, () => {
+    upstream.data.destroy(new Error('Upstream image stream idle timeout'));
   });
   upstream.data.on('error', () => {
     if (!res.headersSent) {
@@ -257,6 +303,45 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
   const relayUrl = (process.env.COMIC_RELAY_URL || '').replace(/\/+$/, '');
   const relaySecret = process.env.COMIC_RELAY_SECRET || '';
 
+  const upstream = await withFetchSlot(() =>
+    downloadUpstreamBuffer({ target, upstreamHeaders, isMangaDexHost, isDocTruyen3QHost, relayUrl, relaySecret })
+  );
+
+  const rawContentType = String(upstream.headers['content-type'] || '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  const safeExt = SAFE_IMAGE_TYPE_MAP[rawContentType];
+  if (!safeExt) {
+    throw new Error(`Unsupported upstream content-type: ${rawContentType || 'unknown'}`);
+  }
+
+  // axios trả về Buffer trong Node — tránh sao chép thêm 1 bản (tới 15MB)
+  const rawBuffer = Buffer.isBuffer(upstream.data) ? upstream.data : Buffer.from(upstream.data);
+  const canPassthrough =
+    isRaw ||
+    ((safeExt === 'webp' || safeExt === 'avif') && rawBuffer.byteLength <= 600 * 1024 && quality >= 55);
+
+  if (canPassthrough) {
+    writeToDiskCache(cacheHash, safeExt, rawBuffer);
+    return { buffer: rawBuffer, contentType: EXT_TO_MIME[safeExt] };
+  }
+
+  const outputBuffer = await withSharpSlot(async () => {
+    const pipeline = sharp(rawBuffer, { limitInputPixels: 25_000_000 }).resize({
+      width,
+      withoutEnlargement: true,
+    });
+    return format === 'avif'
+      ? pipeline.avif({ quality: Math.max(quality - 10, 20) }).toBuffer()
+      : pipeline.webp({ quality }).toBuffer();
+  });
+
+  writeToDiskCache(cacheHash, format, outputBuffer);
+  return { buffer: outputBuffer, contentType: `image/${format}` };
+}
+
+async function downloadUpstreamBuffer({ target, upstreamHeaders, isMangaDexHost, isDocTruyen3QHost, relayUrl, relaySecret }) {
   let upstream;
   if (isDocTruyen3QHost && relayUrl) {
     upstream = await axios.get(`${relayUrl}/api/raw-img`, {
@@ -294,38 +379,7 @@ async function fetchAndProcessImage({ target, width, quality, format, isRaw, cac
       }
     }
   }
-
-  const rawContentType = String(upstream.headers['content-type'] || '')
-    .split(';')[0]
-    .trim()
-    .toLowerCase();
-  const safeExt = SAFE_IMAGE_TYPE_MAP[rawContentType];
-  if (!safeExt) {
-    throw new Error(`Unsupported upstream content-type: ${rawContentType || 'unknown'}`);
-  }
-
-  const rawBuffer = Buffer.from(upstream.data);
-  const canPassthrough =
-    isRaw ||
-    ((safeExt === 'webp' || safeExt === 'avif') && rawBuffer.byteLength <= 600 * 1024 && quality >= 55);
-
-  if (canPassthrough) {
-    writeToDiskCache(cacheHash, safeExt, rawBuffer);
-    return { buffer: rawBuffer, contentType: EXT_TO_MIME[safeExt] };
-  }
-
-  const outputBuffer = await withSharpSlot(async () => {
-    const pipeline = sharp(rawBuffer, { limitInputPixels: 25_000_000 }).resize({
-      width,
-      withoutEnlargement: true,
-    });
-    return format === 'avif'
-      ? pipeline.avif({ quality: Math.max(quality - 10, 20) }).toBuffer()
-      : pipeline.webp({ quality }).toBuffer();
-  });
-
-  writeToDiskCache(cacheHash, format, outputBuffer);
-  return { buffer: outputBuffer, contentType: `image/${format}` };
+  return upstream;
 }
 
 export const proxyImage = async (req, res) => {

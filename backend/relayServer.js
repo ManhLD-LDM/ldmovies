@@ -47,6 +47,10 @@ const RAW_IMG_ALLOWED = (hostname = '') =>
   hostname === 'doctruyen3qhub.club' ||
   hostname.endsWith('.doctruyen3qhub.club');
 
+// Same allow-list as the backend image proxy (no SVG / HTML passthrough)
+const RAW_IMG_SAFE_TYPES = new Set(['image/webp', 'image/avif', 'image/jpeg', 'image/jpg', 'image/png', 'image/gif']);
+const RAW_IMG_MAX_BYTES = 15 * 1024 * 1024;
+
 function isPrivateOrReservedIp(ip = '') {
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
@@ -261,10 +265,10 @@ app.get('/api/raw-img', async (req, res) => {
     // Block private/internal/Tailscale IPs to protect co-located services
     await assertPublicDns(target.hostname);
 
+    // Stream thay vì buffer cả ảnh (3–4MB) vào RAM; timeout khớp với backend (45s)
     const upstream = await axios.get(target.href, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-      maxContentLength: 15 * 1024 * 1024,
+      responseType: 'stream',
+      timeout: 45000,
       maxRedirects: 0, // Prevent open redirect SSRF into internal services
       httpsAgent: ipv4Agent,
       headers: {
@@ -275,18 +279,42 @@ app.get('/api/raw-img', async (req, res) => {
       },
     });
 
-    const contentType = upstream.headers['content-type'] || '';
-    if (!contentType.startsWith('image/')) {
-      return res.status(502).json({ message: 'Upstream did not return an image' });
+    const contentType = String(upstream.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const declaredLength = Number(upstream.headers['content-length']) || 0;
+    if (!RAW_IMG_SAFE_TYPES.has(contentType) || declaredLength > RAW_IMG_MAX_BYTES) {
+      upstream.data.destroy();
+      return res.status(502).json({ message: 'Upstream did not return an acceptable image' });
     }
 
     res.set({
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+      ...(declaredLength > 0 ? { 'Content-Length': String(declaredLength) } : {}),
     });
-    return res.send(Buffer.from(upstream.data));
+
+    let streamedBytes = 0;
+    upstream.data.on('data', (chunk) => {
+      streamedBytes += chunk.length;
+      if (streamedBytes > RAW_IMG_MAX_BYTES) {
+        upstream.data.destroy(new Error('Upstream image exceeded size limit'));
+      }
+    });
+    upstream.data.setTimeout?.(60000, () => {
+      upstream.data.destroy(new Error('Upstream image stream idle timeout'));
+    });
+    res.on('close', () => {
+      if (!res.writableEnded) upstream.data.destroy();
+    });
+    upstream.data.on('error', (streamErr) => {
+      console.error('[RELAY-RAW-IMG] stream', streamErr.message);
+      if (!res.headersSent) res.status(502).end();
+      else res.end();
+    });
+    return upstream.data.pipe(res);
   } catch (err) {
     console.error('[RELAY-RAW-IMG]', err.response?.status || '', err.message);
+    if (res.headersSent) return res.end();
     return res.status(502).json({ message: 'Failed to fetch upstream image' });
   }
 });
